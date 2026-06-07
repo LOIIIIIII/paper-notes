@@ -115,7 +115,9 @@ h1 {
 }
 
 .meta-grid,
-.metric-grid {
+.metric-grid,
+.innovation-grid,
+.flow-grid {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
   gap: 14px;
@@ -127,8 +129,20 @@ h1 {
   margin: 22px 0 18px;
 }
 
+.innovation-grid {
+  grid-template-columns: repeat(2, 1fr);
+  margin: 24px 0 22px;
+}
+
+.flow-grid {
+  grid-template-columns: repeat(2, 1fr);
+  margin: 22px 0;
+}
+
 .meta-grid div,
 .metric-grid div,
+.innovation-grid div,
+.flow-grid div,
 .callout {
   min-width: 0;
   border: 1px solid var(--line);
@@ -139,7 +153,9 @@ h1 {
 }
 
 .meta-grid span,
-.metric-grid span {
+.metric-grid span,
+.innovation-grid span,
+.flow-grid span {
   display: block;
   margin-bottom: 8px;
   color: var(--muted);
@@ -156,6 +172,23 @@ h1 {
 .metric-grid strong {
   color: var(--accent);
   font-size: 24px;
+}
+
+.innovation-grid h3 {
+  margin-top: 0;
+}
+
+.innovation-grid p,
+.flow-grid p {
+  margin-bottom: 0;
+  font-size: 16px;
+}
+
+.flow-grid span,
+.innovation-grid span {
+  color: var(--accent);
+  font-weight: 750;
+  text-transform: uppercase;
 }
 
 .layout {
@@ -351,7 +384,9 @@ tr:last-child td {
   }
 
   .meta-grid,
-  .metric-grid {
+  .metric-grid,
+  .innovation-grid,
+  .flow-grid {
     grid-template-columns: 1fr;
   }
 

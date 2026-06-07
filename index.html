@@ -16,6 +16,7 @@
         <a class="brand" href="#">LVDrive 笔记</a>
         <div class="nav-links">
           <a href="#problem">问题</a>
+          <a href="#innovation">创新</a>
           <a href="#method">方法</a>
           <a href="#experiments">实验</a>
           <a href="#ablations">消融</a>
@@ -54,8 +55,12 @@
         <aside class="toc" aria-label="目录">
           <a href="#summary">一句话</a>
           <a href="#problem">问题意识</a>
-          <a href="#method">核心方法</a>
-          <a href="#details">关键机制</a>
+          <a href="#innovation">创新点</a>
+          <a href="#method">方法总览</a>
+          <a href="#formulation">问题定义</a>
+          <a href="#latent">未来视觉 latent</a>
+          <a href="#decoder">轨迹解码</a>
+          <a href="#training">训练目标</a>
           <a href="#experiments">主实验</a>
           <a href="#ablations">消融</a>
           <a href="#qualitative">案例</a>
@@ -95,8 +100,58 @@
             </figure>
           </section>
 
+          <section id="innovation" class="section">
+            <h2>创新点怎么理解</h2>
+            <p>
+              LVDrive 的创新点不只是“多加一个未来预测任务”。它真正想解决的是：
+              dense future supervision 如何进入 VLA，又不退化成昂贵的未来图像生成；
+              以及 future representation 如何真正影响轨迹，而不是只作为训练时的辅助 loss。
+            </p>
+            <div class="innovation-grid">
+              <div>
+                <span>Innovation 1</span>
+                <h3>Latent future representation</h3>
+                <p>
+                  把未来场景预测放在 latent visual space，而不是 RGB pixel space。这样模型学习的是车道、
+                  车辆、障碍物、交通信号等语义结构，而不是天空、路面纹理和光照细节。
+                </p>
+              </div>
+              <div>
+                <span>Innovation 2</span>
+                <h3>Continuous joint prediction</h3>
+                <p>
+                  未来视觉特征和 motion feature 在同一次 forward 中联合预测，避免类似图像生成模型那样
+                  逐 token 自回归生成 future frames 和 action tokens。
+                </p>
+              </div>
+              <div>
+                <span>Innovation 3</span>
+                <h3>Visual-action interaction</h3>
+                <p>
+                  未来视觉语义不是只参与辅助监督，而是在 trajectory refiner 中通过 cross-attention
+                  显式条件化最终轨迹生成。
+                </p>
+              </div>
+              <div>
+                <span>Innovation 4</span>
+                <h3>Two-stage decoding</h3>
+                <p>
+                  先用 action labels 稳定学习 coarse motion，再让 future visual embeddings 做细粒度修正。
+                  这比 one-stage 直接融合更稳，消融实验也证明了这一点。
+                </p>
+              </div>
+            </div>
+            <div class="callout">
+              <strong>我的理解</strong>
+              <p>
+                这篇论文的“新”不是提出一个全新的大模型，而是把 world modeling 重新定义成
+                planning-oriented latent supervision，并且设计了一个让未来语义进入 action decoding 的路径。
+              </p>
+            </div>
+          </section>
+
           <section id="method" class="section">
-            <h2>核心方法</h2>
+            <h2>核心方法总览</h2>
             <figure>
               <img src="./assets/lvdrive-figure-2-architecture.png" alt="LVDrive 总体架构图" />
               <figcaption>
@@ -120,6 +175,25 @@ Trajectory Refiner cross-attend future visual embeddings
         ↓
 final trajectory</code></pre>
 
+            <div class="flow-grid">
+              <div>
+                <span>Input</span>
+                <p>当前结构化多视角图像特征 <code>xs</code>、历史图像特征 <code>xh</code>、文本指令 <code>xq</code>。</p>
+              </div>
+              <div>
+                <span>Reasoning</span>
+                <p>Vision encoder 和 LLM 将视觉、历史和语言输入投影到统一 token embedding space。</p>
+              </div>
+              <div>
+                <span>Future latent</span>
+                <p>LLM 在特殊 <code>&lt;img_i&gt;</code> placeholder 位置产生未来视觉 hidden states。</p>
+              </div>
+              <div>
+                <span>Planning</span>
+                <p><code>&lt;waypoint_ego&gt;</code> planning token 被解码成轨迹，并由 future semantics 精修。</p>
+              </div>
+            </div>
+
             <div class="callout">
               <strong>关键直觉</strong>
               <p>
@@ -129,9 +203,31 @@ final trajectory</code></pre>
             </div>
           </section>
 
-          <section id="details" class="section">
-            <h2>关键机制拆解</h2>
-            <h3>1. `H_{t+j}` 是什么？</h3>
+          <section id="formulation" class="section">
+            <h2>3.1 Problem Formulation</h2>
+            <p>
+              LVDrive 沿用近期端到端 VLA 自动驾驶模型的设定：给定时间步 <code>t</code> 的驾驶场景，
+              多视角图像先通过专门的 vision encoder 得到结构化视觉特征，再和文本指令一起进入 LLM/VLA 的 reasoning space。
+              原本的任务是输出一个 planning token <code>s</code>，再由 action decoder 生成 ego trajectory。
+            </p>
+            <p>
+              LVDrive 将任务扩展为联合预测未来视觉 latent 和 planning token：
+            </p>
+            <pre><code>V_{t+1:t+F}, s ~ p(V_{t+1:t+F}, s | xs, xh, xq)</code></pre>
+            <p>
+              这里 <code>F</code> 是未来预测时域，<code>V_{t+1:t+F}</code> 是未来 F 个时刻的 latent visual features。
+              这个定义的重点是：模型不只是“当前画面到轨迹”，而是“当前/历史场景到未来视觉语义 + 轨迹规划”。
+              训练目标会迫使模型在规划前形成 future-aware reasoning。
+            </p>
+            <p>
+              作者还做了一个取舍：未来预测主要关注 front-view。直觉是人类驾驶主要看前方，所以前视未来足以提供很多规划信息。
+              但这个取舍也解释了后面 Give Way 能力弱的问题，因为让行 emergency vehicle 往往需要理解后方交互。
+            </p>
+          </section>
+
+          <section id="latent" class="section">
+            <h2>3.2 Latent Future Visual Representation Learning</h2>
+            <h3>Placeholder tokens 如何承载未来视觉？</h3>
             <p>
               模型会在输出序列中放入一组未来视觉占位符 tokens：
               <code>&lt;img_start&gt; &lt;img_0&gt; ... &lt;img_N&gt; &lt;img_end&gt;</code>。
@@ -143,8 +239,22 @@ final trajectory</code></pre>
               训练时，<code>H_{t+j}</code> 经过 <code>VISθ</code> 得到 <code>V_{t+j}</code>，
               再对齐真实未来帧经 frozen Vision Backbone 得到的 teacher feature。
             </p>
+            <p>
+              对每个未来帧，轻量视觉解码器 <code>VISθ</code> 会把 LLM hidden states 映射到视觉 latent 维度：
+            </p>
+            <pre><code>V_{t+j} = VISθ(H_{t+j}),  V_{t+j} ∈ R^{N × Cv}</code></pre>
+            <p>
+              这一步很关键：<code>H_{t+j}</code> 仍处在 LLM reasoning space，包含语言、历史和视觉上下文；
+              <code>V_{t+j}</code> 则被压到视觉 latent space，用来和 teacher feature 做监督对齐。
+            </p>
 
-            <h3>2. `Lce` 和 `Lvis` 的区别</h3>
+            <h3>Teacher feature 从哪里来？</h3>
+            <p>
+              真实未来帧会进入一个冻结的 pretrained vision backbone，论文实现中使用 VQGAN-ImageNet 的 quantized code embeddings。
+              这个 backbone 不参与训练，只提供语义监督信号。这样模型不会被要求重建像素，而是学习与未来帧语义表示一致的 latent。
+            </p>
+
+            <h3>`Lce` 和 `Lvis` 的区别</h3>
             <p>
               <code>Lce</code> 是格式监督，负责让 LLM 稳定输出正确的 placeholder token 序列；
               <code>Lvis</code> 是语义监督，负责让这些 placeholder 对应的 hidden states 真正包含未来视觉语义。
@@ -152,11 +262,79 @@ final trajectory</code></pre>
             <pre><code>Lce：教模型画出表格栏位
 Lvis：教模型在栏位里填对内容</code></pre>
 
-            <h3>3. 两阶段轨迹解码</h3>
+            <h3>为什么 planning token 放在 latent visual sequence 后面？</h3>
+            <p>
+              特殊 planning token <code>&lt;waypoint_ego&gt;</code> 被放在 latent visual sequence 之后。
+              由于 LLM 使用 causal attention，后面的 planning token 可以 attend 到前面这些 future visual placeholder hidden states。
+              因此，即使还没有进入 trajectory refiner，planning embedding 已经隐式聚合了未来视觉语义。
+            </p>
+          </section>
+
+          <section id="decoder" class="section">
+            <h2>3.3 Two-stage Trajectory Decoding</h2>
+            <p>
+              轨迹生成被分成两个阶段：先生成 coarse proposal，再生成 fine-grained final trajectory。
+              论文用 <code>K</code> 表示多模态候选轨迹数量，用 <code>F</code> 表示未来时间步，
+              所以粗轨迹和最终轨迹都是 <code>R^{K × F × 2}</code> 的二维坐标序列。
+            </p>
+
+            <h3>第一阶段：VAE-based generative planner</h3>
+            <p>
+              第一阶段根据 planning embedding <code>Hp</code> 生成粗轨迹。它先用 distribution generator
+              <code>DISθ</code> 预测高斯分布参数，再采样 latent variable <code>z</code> 表示未来 motion uncertainty。
+            </p>
+            <pre><code>(μ, σ²) = DISθ(Hp)
+z ~ p(μ, σ²)
+sego = STATEθ(z, Hp)</code></pre>
+            <p>
+              <code>STATEθ</code> 是 GRU-based state decoder。它把 <code>z</code> 和 <code>Hp</code>
+              解码成未来 ego motion states，再由 MLP 转成 K 条 coarse trajectory proposals。
+              这一步主要让 action labels 稳定约束 motion feature。
+            </p>
+
+            <h3>第二阶段：Trajectory Refiner</h3>
+            <p>
+              第二阶段把第一阶段得到的 ego motion states 投影成 queries，再把未来视觉 hidden states 投影成
+              cross-attention 的 keys 和 values：
+            </p>
+            <pre><code>Qego = PROJθ(sego)
+Kfut, Vfut = PROJθ(H_{t+1:t+F})
+s*ego = TRAJREFINERθ(Qego, Kfut, Vfut)</code></pre>
+            <p>
+              注意作者使用的是高维 <code>H_{t+j}</code>，而不是已经解码后的 <code>V_{t+j}</code>。
+              原因是 <code>H_{t+j}</code> 保留了更多 LLM reasoning information。
+              换句话说，refiner 不是只看“视觉 teacher 对齐后的 latent”，而是直接读取 LLM 对未来场景的内部推理表示。
+            </p>
+            <p>
+              最后，refined motion feature 会通过两个 MLP 分别生成 base trajectories 和 offsets。
+              两者相加得到最终轨迹。这种 base + offset 的设计增加了轨迹生成的灵活性和多样性。
+            </p>
+
+            <h3>为什么不是 one-stage？</h3>
             <ol>
-              <li><strong>Coarse proposal：</strong>planning embedding 通过 VAE-based generative planner 生成粗轨迹。</li>
-              <li><strong>Future-aware refinement：</strong>trajectory refiner 让 ego motion queries 显式 attend 到 future visual embeddings。</li>
+              <li><strong>动作空间和视觉空间不天然对齐：</strong>直接把视觉预测和规划混在一起，可能给 motion feature 带来冲突梯度。</li>
+              <li><strong>coarse proposal 先稳定可行性：</strong>第一阶段先学“能开”的轨迹。</li>
+              <li><strong>refiner 再引入未来语义：</strong>第二阶段再用 future visual embeddings 修正细节。</li>
             </ol>
+          </section>
+
+          <section id="training" class="section">
+            <h2>3.4 Training Objectives</h2>
+            <p>
+              LVDrive 是端到端训练的，不需要像一些 world-model 方法那样做复杂多阶段训练。总损失为：
+            </p>
+            <pre><code>L = Lvis + Lplan + Lplan_r + Lqt + Lce</code></pre>
+            <ul>
+              <li><strong>Lvis：</strong>未来视觉特征预测损失，由 frame-wise cosine similarity loss 和 L1 loss 组成。</li>
+              <li><strong>Lplan：</strong>coarse trajectory 的规划损失，包括 MSE、boundary loss、collision loss。</li>
+              <li><strong>Lplan_r：</strong>final trajectory 的规划损失，也包括 MSE、boundary loss、collision loss。</li>
+              <li><strong>Lqt：</strong>结构化多视角特征提取损失，沿用前作。</li>
+              <li><strong>Lce：</strong>LLM 生成固定 placeholder token 序列的交叉熵损失。</li>
+            </ul>
+            <p>
+              作者经验性省略了 VAE 的 KL-divergence loss，因为 KL 正则可能过度约束多模态 latent motion space。
+              在驾驶任务中，多条未来轨迹都可能合理；如果 latent space 被压得太规整，可能反而削弱多样性和学习能力。
+            </p>
           </section>
 
           <section id="experiments" class="section">
