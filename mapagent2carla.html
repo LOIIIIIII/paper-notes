@@ -1,0 +1,233 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>MapAgent2CARLA | 多智能体闭环生成 CARLA 可运行地图</title>
+    <meta
+      name="description"
+      content="MapAgent2CARLA: 从卫星图、航拍图、平面地图到 CARLA-ready 城市地图的多智能体生成、验证与修复框架。"
+    />
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body class="mapagent-page">
+    <header class="site-header mapagent-header">
+      <nav class="nav">
+        <a class="brand" href="./index.html">Paper Notes</a>
+        <div class="nav-links">
+          <a href="#idea">想法</a>
+          <a href="#agents">Agent</a>
+          <a href="#loop">闭环</a>
+          <a href="#prototype">原型</a>
+          <a href="#metrics">指标</a>
+          <a href="./docs/mapagent2carla-framework.md">Markdown</a>
+        </div>
+      </nav>
+    </header>
+
+    <main>
+      <section class="mapagent-hero">
+        <div class="mapagent-hero-inner">
+          <div class="hero-copy">
+            <p class="eyebrow">Multi-Agent · CARLA · OpenDRIVE · Digital Twin</p>
+            <h1>MapAgent2CARLA</h1>
+            <p class="hero-summary">
+              一个从卫星图、航拍图、平面地图和 3D 俯视图出发，自动生成、验证并修复
+              CARLA 可运行城市地图的多智能体框架设想。
+            </p>
+            <div class="hero-actions">
+              <a href="#agents">查看框架</a>
+              <a href="./_posts/2026-06-09-mapagent2carla.md">博客 Markdown</a>
+            </div>
+          </div>
+          <div class="map-visual" aria-label="MapAgent2CARLA pipeline visualization">
+            <div class="map-grid">
+              <span class="road road-a"></span>
+              <span class="road road-b"></span>
+              <span class="road road-c"></span>
+              <span class="lane-dot dot-1"></span>
+              <span class="lane-dot dot-2"></span>
+              <span class="lane-dot dot-3"></span>
+              <span class="building b1"></span>
+              <span class="building b2"></span>
+              <span class="building b3"></span>
+              <span class="agent-chip chip-perception">Perception</span>
+              <span class="agent-chip chip-topology">Topology</span>
+              <span class="agent-chip chip-builder">Builder</span>
+              <span class="agent-chip chip-inspector">Inspector</span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section id="idea" class="mapagent-band">
+        <div class="mapagent-container intro-grid">
+          <div>
+            <h2>核心想法</h2>
+            <p>
+              自动驾驶仿真地图不是一张漂亮的 3D 图片。它必须同时拥有视觉资产和可驾驶语义：
+              道路拓扑、车道方向、junction、waypoint、spawn point、交通灯和 OpenDRIVE。
+            </p>
+            <p>
+              MapAgent2CARLA 的目标是让多个智能体分工协作，从多源视觉地图输入中生成
+              <strong>simulator-ready map</strong>，并通过 CARLA 仿真结果自动发现和修复问题。
+            </p>
+          </div>
+          <div class="principle-panel">
+            <span>Research Positioning</span>
+            <strong>Generate → Simulate → Inspect → Repair</strong>
+            <p>
+              重点不是一次性生成，而是把 CARLA 作为闭环验证环境，让地图在反复仿真和修复中变得可运行。
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <section id="agents" class="mapagent-section">
+        <div class="mapagent-container">
+          <h2>多智能体分工</h2>
+          <p class="section-kicker">
+            每个 Agent 只负责一个清晰任务，并通过结构化中间表示把结果传给下一个 Agent。
+          </p>
+
+          <div class="agent-ladder">
+            <article>
+              <span>01</span>
+              <h3>Perception Agent</h3>
+              <p>调用 SAM/SAM2、遥感道路提取、OCR、VLM 和图像配准工具，识别道路、建筑、人行道、绿地和障碍物候选区域。</p>
+            </article>
+            <article>
+              <span>02</span>
+              <h3>Topology Agent</h3>
+              <p>从 road mask 中提取道路中心线、lane graph、junction graph、车道方向、道路宽度、spawn point 和 waypoint graph。</p>
+            </article>
+            <article>
+              <span>03</span>
+              <h3>Semantic Configuration Agent</h3>
+              <p>生成统一地图配置文件，把图像理解、OpenDRIVE、3D assets 和 CARLA 仿真连接起来。</p>
+            </article>
+            <article>
+              <span>04</span>
+              <h3>Builder Agent</h3>
+              <p>生成 OpenDRIVE/XODR、waypoint、交通配置和 3D 视觉资产，可调用 RoadRunner、UE、Blender 或 Marble-like 模型。</p>
+            </article>
+            <article>
+              <span>05</span>
+              <h3>Simulation Agent</h3>
+              <p>把地图导入 CARLA，运行 route planning、交通流、车辆和行人，记录碰撞、卡死、断路和 off-road 等问题。</p>
+            </article>
+            <article>
+              <span>06</span>
+              <h3>Inspector & Repair Agent</h3>
+              <p>根据截图、鸟瞰图、OpenDRIVE 解析结果和仿真日志定位问题，并自动修改拓扑、OpenDRIVE 或场景配置。</p>
+            </article>
+          </div>
+        </div>
+      </section>
+
+      <section id="loop" class="mapagent-section soft-section">
+        <div class="mapagent-container">
+          <h2>闭环流程</h2>
+          <div class="loop-diagram">
+            <div>Multi-source<br />Map Input</div>
+            <div>Semantic<br />Understanding</div>
+            <div>OpenDRIVE +<br />3D Assets</div>
+            <div>CARLA<br />Simulation</div>
+            <div>Quality<br />Inspection</div>
+            <div>Automatic<br />Repair</div>
+          </div>
+          <p>
+            闭环的价值在于，地图质量不再只由人工肉眼判断，而是由仿真运行结果约束。
+            如果车辆在路口卡死，Inspector Agent 需要定位是 lane connection、junction topology、
+            waypoint 还是障碍物摆放导致的失败，再由 Repair Agent 修改配置并重新生成。
+          </p>
+        </div>
+      </section>
+
+      <section id="prototype" class="mapagent-section">
+        <div class="mapagent-container split-block">
+          <div>
+            <h2>最小可行原型</h2>
+            <p>
+              第一阶段不必做完整城市。可以从 10 到 50 个小区域开始：直路、T 字路口、十字路口、
+              校园道路、园区道路和停车场入口。
+            </p>
+            <pre><code>输入一张航拍/卫星图
+        ↓
+输出 road graph + scene config
+        ↓
+生成 OpenDRIVE
+        ↓
+导入 CARLA
+        ↓
+跑通 route
+        ↓
+检测并修复失败点</code></pre>
+          </div>
+          <div class="artifact-list">
+            <h3>产物</h3>
+            <ul>
+              <li>结构化地图配置文件</li>
+              <li>OpenDRIVE / XODR 路网</li>
+              <li>waypoint graph 与 spawn points</li>
+              <li>3D 场景资产与障碍物配置</li>
+              <li>CARLA 可加载地图包</li>
+              <li>仿真日志与自动修复报告</li>
+            </ul>
+          </div>
+        </div>
+      </section>
+
+      <section id="metrics" class="mapagent-section">
+        <div class="mapagent-container">
+          <h2>评价指标</h2>
+          <table>
+            <thead>
+              <tr>
+                <th>维度</th>
+                <th>指标</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>感知质量</td>
+                <td>road IoU, building IoU, boundary F1</td>
+              </tr>
+              <tr>
+                <td>拓扑质量</td>
+                <td>graph connectivity, lane continuity, junction validity</td>
+              </tr>
+              <tr>
+                <td>CARLA 可运行性</td>
+                <td>import success rate, route completion rate</td>
+              </tr>
+              <tr>
+                <td>交通稳定性</td>
+                <td>collision rate, deadlock rate, off-road rate</td>
+              </tr>
+              <tr>
+                <td>人工成本</td>
+                <td>manual correction time, editing steps</td>
+              </tr>
+              <tr>
+                <td>闭环收益</td>
+                <td>repair success rate, iterations to pass</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="mapagent-section final-section">
+        <div class="mapagent-container">
+          <p class="eyebrow">Possible Title</p>
+          <h2>MapAgent2CARLA: Multi-Agent Generation and Validation of CARLA-Ready Urban Maps</h2>
+          <p>
+            这个框架的论文定位可以是：多智能体从多源地图输入出发，生成视觉 3D 场景和可驾驶 OpenDRIVE 语义，
+            并通过 CARLA 闭环仿真自动检测、定位和修复地图错误。
+          </p>
+        </div>
+      </section>
+    </main>
+  </body>
+</html>
