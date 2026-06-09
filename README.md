@@ -2,13 +2,15 @@
 
 这个仓库用于整理自动驾驶、VLA、World Model 等方向的论文阅读笔记。
 
-## Notes
+## 项目与网址
 
-- [LVDrive 论文笔记](./papers/LVDrive/LVDrive论文笔记.md)
-- [LVDrive GitHub Pages 版](./_posts/2026-06-07-lvdrive.md)
-- [LVDrive Word 精读笔记](./papers/LVDrive/LVDrive论文精读笔记.docx)
-- [MapAgent2CARLA 博客页面](./mapagent2carla.html)
-- [MapAgent2CARLA 框架 Markdown](./docs/mapagent2carla-framework.md)
+| 项目 | 在线页面 | Markdown / 文档源码 |
+|---|---|---|
+| 首页 / LVDrive 精读页面 | [GitHub Pages](https://loiiiiiii.github.io/paper-notes/) | [index.html](./index.html) |
+| LVDrive 论文笔记 | [Jekyll post 源文档](./_posts/2026-06-07-lvdrive.md) | [论文笔记 Markdown](./papers/LVDrive/LVDrive论文笔记.md), [Word 精读笔记](./papers/LVDrive/LVDrive论文精读笔记.docx) |
+| MapAgent2CARLA 多智能体地图生成框架 | [GitHub Pages](https://loiiiiiii.github.io/paper-notes/mapagent2carla.html) | [框架 Markdown](./docs/mapagent2carla-framework.md), [博客 Markdown](./_posts/2026-06-09-mapagent2carla.md), [HTML 页面](./mapagent2carla.html) |
+
+> GitHub Pages 更新可能有几十秒到几分钟延迟。如果在线页面暂时没刷新，可以先看仓库里的 HTML / Markdown 源文件。
 
 ## Current Focus
 
