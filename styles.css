@@ -62,6 +62,21 @@ body.theme-indigo {
   --shadow: 0 18px 50px rgba(55, 66, 118, 0.09);
 }
 
+body.theme-amber {
+  --ink: #211d16;
+  --muted: #746b5f;
+  --line: #eadfce;
+  --paper: #fffdf9;
+  --soft: #f8f1e6;
+  --accent: #a6531d;
+  --accent-2: #08746d;
+  --code: #f8f3ea;
+  --hero-start: #fff8ef;
+  --hero-end: #fffdf9;
+  --header-bg: rgba(255, 253, 249, 0.92);
+  --shadow: 0 18px 50px rgba(129, 82, 31, 0.1);
+}
+
 a {
   color: inherit;
 }
