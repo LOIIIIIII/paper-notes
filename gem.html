@@ -1,0 +1,354 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>GEM 论文精读笔记</title>
+    <meta name="description" content="GEM: Generative Supervision Helps Embodied Intelligence 论文精读笔记。" />
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <header class="site-header">
+      <nav class="nav">
+        <a class="brand" href="./gem.html">GEM 笔记</a>
+        <div class="nav-links">
+          <a href="./index.html">LVDrive</a>
+          <a href="./mapagent2carla.html">MapAgent2CARLA</a>
+          <a href="#problem">问题</a>
+          <a href="#innovation">创新</a>
+          <a href="#method">方法</a>
+          <a href="#experiments">实验</a>
+          <a href="#takeaways">启发</a>
+        </div>
+      </nav>
+    </header>
+
+    <main>
+      <section class="hero">
+        <div class="hero-inner">
+          <p class="eyebrow">Embodied VLM / VLA Paper Notes</p>
+          <h1>GEM 论文精读笔记</h1>
+          <p class="hero-summary">
+            GEM 用 depth map generation 作为生成式监督，把 VLM 的视觉 token 从“语义对齐表示”
+            推向“语义 + 几何结构”表示，并把这种结构感迁移到 GEM-VLA 的机器人连续动作生成。
+          </p>
+          <div class="meta-grid">
+            <div>
+              <span>论文标题</span>
+              <strong>GEM: Generative Supervision Helps Embodied Intelligence</strong>
+            </div>
+            <div>
+              <span>来源</span>
+              <strong>arXiv:2605.28548v1，Tsinghua University 与 Tencent Hunyuan</strong>
+            </div>
+            <div>
+              <span>核心关键词</span>
+              <strong>Embodied VLM · Depth Generation · Flow Matching · GEM-VLA</strong>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <div class="layout">
+        <aside class="toc" aria-label="目录">
+          <a href="#summary">一句话</a>
+          <a href="#problem">问题意识</a>
+          <a href="#innovation">创新点</a>
+          <a href="#method">方法总览</a>
+          <a href="#architecture">3.1 架构</a>
+          <a href="#training">3.2 训练</a>
+          <a href="#dataset">3.3 数据</a>
+          <a href="#vla">3.4 VLA</a>
+          <a href="#experiments">实验</a>
+          <a href="#ablations">消融</a>
+          <a href="#limits">局限</a>
+          <a href="#takeaways">启发</a>
+        </aside>
+
+        <article class="article">
+          <section id="summary" class="section lead-section">
+            <h2>一句话总结</h2>
+            <p class="lead">
+              GEM 的核心不是为了生成漂亮的深度图，而是用 depth generation 这个任务反向塑造 VLM 的 visual tokens，
+              让它们更包含距离、结构、几何关系等 embodied manipulation 需要的物理信息。
+            </p>
+          </section>
+
+          <section id="problem" class="section">
+            <h2>论文要解决的问题</h2>
+            <p>
+              现有 Embodied VLM / VLA 的预训练大多依赖 VQA、caption 或 instruction tuning。
+              这些监督很擅长提升语义理解，但不一定让模型学到低层几何结构。机器人真正执行任务时，
+              只知道“杯子在桌上”不够，还要知道物体距离、前后关系、可抓取位置、局部形状和动作后果。
+            </p>
+            <ul>
+              <li><strong>语义强，几何弱：</strong>普通 VLM final-layer visual tokens 更偏语义，不一定保留精细空间结构。</li>
+              <li><strong>物理先验注入太晚：</strong>一些 VLA 在下游动作模型中再补 3D/2.5D 信息，和 VLM 预训练表示割裂。</li>
+              <li><strong>RGB 生成不够对齐：</strong>RGB reconstruction 会学纹理和颜色，但机器人更需要距离和空间关系。</li>
+            </ul>
+            <figure>
+              <img src="./assets/gem-figure-1-overview.png" alt="GEM 总览图" />
+              <figcaption>
+                Figure 1：GEM 在 embodied grounding、spatial reasoning、spatiotemporal planning 数据上预训练，
+                用 depth generation 监督增强 VLM，再扩展成 GEM-VLA。
+              </figcaption>
+            </figure>
+          </section>
+
+          <section id="innovation" class="section">
+            <h2>创新点怎么理解</h2>
+            <div class="innovation-grid">
+              <div>
+                <span>Innovation 1</span>
+                <h3>Depth as generative supervision</h3>
+                <p>不是用 RGB reconstruction，而是生成 depth map。Depth 更直接编码距离、遮挡、前后关系和几何布局，与具身操作需求更一致。</p>
+              </div>
+              <div>
+                <span>Innovation 2</span>
+                <h3>Hybrid AR-Diffusion design</h3>
+                <p>保留 autoregressive VLM 做语言理解，再接 DiT depth head 做生成式监督，让理解模型和生成监督共用视觉表示。</p>
+              </div>
+              <div>
+                <span>Innovation 3</span>
+                <h3>Progressive training</h3>
+                <p>先对齐 connector，再 warm up depth head，最后联合训练，避免生成 head 与 VLM backbone 一开始互相干扰。</p>
+              </div>
+              <div>
+                <span>Innovation 4</span>
+                <h3>From GEM to GEM-VLA</h3>
+                <p>把经过几何监督塑造的 GEM 表示接入 action expert，用 flow matching 生成连续动作，检验表征是否真的能迁移到机器人执行。</p>
+              </div>
+            </div>
+            <div class="callout">
+              <strong>我的理解</strong>
+              <p>
+                GEM 和 LVDrive 的共同点是：生成任务不是最终目的，而是 representation shaping。
+                GEM 用 depth 塑造几何表征，LVDrive 用 future latent 塑造规划表征。
+              </p>
+            </div>
+          </section>
+
+          <section id="method" class="section">
+            <h2>核心方法总览</h2>
+            <figure>
+              <img src="./assets/gem-figure-2-architecture.png" alt="GEM 架构与训练流程图" />
+              <figcaption>
+                Figure 2：GEM 在 VLM backbone 后接 connector 和 DiT depth generator，并采用渐进式训练；
+                之后用 GEM 的 multimodal tokens 条件化 action expert。
+              </figcaption>
+            </figure>
+            <pre><code>图像 o + 语言指令 l
+        ↓
+VLM backbone Mθ
+        ↓
+final-layer visual tokens ho
+        ↓
+connector Cϕ
+        ↓
+condition c
+        ↓
+DiT depth generator Gψ
+        ↓
+depth map generation supervision</code></pre>
+          </section>
+
+          <section id="architecture" class="section">
+            <h2>3.1 Architecture</h2>
+            <p>
+              普通 VLM 给定视觉输入 <code>o</code> 和语言指令 <code>l</code>，由 backbone
+              <code>Mθ</code> 输出最终层 multimodal token 表示：
+            </p>
+            <pre><code>h = (ho, hl) = Mθ(o, l)</code></pre>
+            <p>
+              其中 <code>ho</code> 是 visual tokens，<code>hl</code> 是 language tokens。普通 SFT 主要优化文本生成：
+            </p>
+            <pre><code>LCE = - Σ log pθ(yi | y&lt;i, ho, hl)</code></pre>
+            <p>
+              这个目标可以让 visual tokens 对齐语言语义，但不保证它们保存物体深度、距离和几何结构。
+              GEM 因此加入 depth generative objective：把 <code>ho</code> 送入 connector 得到条件向量
+              <code>c = Cϕ(ho)</code>，再让 DiT depth head <code>Gψ</code> 在该条件下生成 depth map。
+            </p>
+            <pre><code>Lflow = E || vt(xt, c) - ut(xt | d) ||²</code></pre>
+            <p>
+              这里的 <code>xt</code> 是带噪 depth 状态，<code>d</code> 是 ground-truth 或 pseudo depth map。
+              Flow matching 训练 DiT 学一个 vector field，把 noisy depth distribution 变成目标 depth。
+            </p>
+          </section>
+
+          <section id="training" class="section">
+            <h2>3.2 Progressive Training Recipe</h2>
+            <p>
+              作者强调不能直接端到端混训，因为 VLM hidden space 和 DiT input space 之间有 gap，
+              生成任务可能干扰语言理解模型。因此 GEM 分三阶段训练：
+            </p>
+            <div class="flow-grid">
+              <div>
+                <span>Stage 1</span>
+                <h3>Connector Initialization</h3>
+                <p>冻结 VLM 和 DiT，只训练 connector，用 <code>Lflow</code> 做初步 feature alignment。</p>
+              </div>
+              <div>
+                <span>Stage 2</span>
+                <h3>Generative Head Initialization</h3>
+                <p>冻结 VLM，训练 connector + DiT head，让 depth generator 适应 VLM 条件特征。</p>
+              </div>
+              <div>
+                <span>Stage 3</span>
+                <h3>Joint Training</h3>
+                <p>解冻可训练模块，同时优化 <code>LCE + λLflow</code>，让语义理解和结构生成协同。</p>
+              </div>
+              <div>
+                <span>Stage 4</span>
+                <h3>Action Model Training</h3>
+                <p>扩展到 GEM-VLA，训练 action expert，把几何增强后的表征迁移到连续动作生成。</p>
+              </div>
+            </div>
+            <pre><code>Ltotal = LCE + λLflow,  λ = 0.1</code></pre>
+          </section>
+
+          <section id="dataset" class="section">
+            <h2>3.3 GEM-4M Dataset</h2>
+            <p>
+              GEM-4M 是一个大规模 embodied pre-training dataset。它不是简单堆 VQA，
+              而是围绕 grounding、spatial reasoning 和 planning 组织数据。
+            </p>
+            <ul>
+              <li><strong>Embodied Grounding：</strong>约 1M QA pairs，覆盖 open-vocabulary detection、instruction localization、affordance recognition。</li>
+              <li><strong>Physical / Spatial Reasoning：</strong>整合 MindCube、ViCA、SPAR、VSI-590K、RoboVQA、Robo2VLM、RefSpatial 等，强化距离、3D 关系和时空推理。</li>
+              <li><strong>Spatiotemporal Planning：</strong>从机器人视频中构造 sub-task / trajectory planning QA，约 50K samples。</li>
+            </ul>
+          </section>
+
+          <section id="vla" class="section">
+            <h2>3.4 Expanding to GEM-VLA</h2>
+            <p>
+              GEM-VLA 在 GEM backbone 上接入 DiT-based action expert <code>Aω</code>。
+              它从 backbone attention blocks 中提取 multimodal observation history 的 K/V tokens，
+              作为 action expert 的条件表示 <code>cact</code>。
+            </p>
+            <pre><code>Laction = E || vt(at, cact) - ut(at | a) ||²
+Ltotal = Laction + λLflow</code></pre>
+            <p>
+              也就是说，动作专家不仅学习 ground-truth action chunk，还继续保留 depth generative supervision。
+              作者的假设是：几何结构监督可以让 action prediction 更稳定，尤其在 deformable object 和 long-horizon tasks 中。
+            </p>
+          </section>
+
+          <section id="experiments" class="section">
+            <h2>实验结论</h2>
+            <h3>Embodied reasoning</h3>
+            <table>
+              <thead>
+                <tr>
+                  <th>Model</th>
+                  <th>VSI-Bench All ↑</th>
+                  <th>MMSI-Bench All ↑</th>
+                  <th>EmbSpatial All ↑</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr><td>Qwen3-VL-2B-SFT</td><td>60.0</td><td>28.9</td><td>72.7</td></tr>
+                <tr class="highlight"><td>GEM-2B</td><td>62.8</td><td>30.6</td><td>73.0</td></tr>
+                <tr><td>Qwen3-VL-8B-SFT</td><td>68.6</td><td>32.8</td><td>78.3</td></tr>
+                <tr class="highlight"><td>GEM-8B</td><td>70.6</td><td>35.3</td><td>79.4</td></tr>
+              </tbody>
+            </table>
+            <p>
+              重点是：GEM 相比同源 Qwen3-VL-SFT 版本继续提升，说明收益不只是来自额外 SFT 数据，
+              depth generative supervision 有额外贡献。
+            </p>
+
+            <h3>LIBERO simulation</h3>
+            <table>
+              <thead>
+                <tr>
+                  <th>Model</th>
+                  <th>Spatial</th>
+                  <th>Object</th>
+                  <th>Goal</th>
+                  <th>Long</th>
+                  <th>Average ↑</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr><td>π0 reported</td><td>96.8</td><td>98.8</td><td>95.8</td><td>85.2</td><td>94.2</td></tr>
+                <tr><td>DepthVLA</td><td>96.4</td><td>98.0</td><td>95.8</td><td>89.2</td><td>94.9</td></tr>
+                <tr><td>Qwen3VL-SFT-VLA</td><td>97.2</td><td>98.4</td><td>95.6</td><td>88.4</td><td>94.9</td></tr>
+                <tr class="highlight"><td>GEM-VLA</td><td>99.0</td><td>98.8</td><td>97.1</td><td>89.3</td><td>96.1</td></tr>
+              </tbody>
+            </table>
+
+            <h3>Real-world operation</h3>
+            <figure>
+              <img src="./assets/gem-figure-3-realworld.png" alt="GEM-VLA 真实机器人任务结果" />
+              <figcaption>
+                Figure 3：GEM-VLA 在 Cloth Folding、Unzipping、Table Bussing 等真实机器人任务中优于多个 baseline。
+              </figcaption>
+            </figure>
+            <p>
+              论文报告 All Task Average 中 GEM-VLA 为 43.0，高于 π0.5 的 28.7 和 π0-FAST 的 22.3。
+              去掉 depth supervision 后，多个任务性能下降，支撑 depth supervision 对操作能力的贡献。
+            </p>
+          </section>
+
+          <section id="ablations" class="section">
+            <h2>消融实验怎么读</h2>
+            <table>
+              <thead>
+                <tr>
+                  <th>Setting</th>
+                  <th>CV-Bench All ↑</th>
+                  <th>VSI Abs.Dist. ↑</th>
+                  <th>VSI Rel.Dist. ↑</th>
+                  <th>VSI All ↑</th>
+                  <th>RoboSpatial All ↑</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr><td>RGB Supervision</td><td>80.9</td><td>47.5</td><td>62.8</td><td>60.0</td><td>44.6</td></tr>
+                <tr><td>Direct End-to-End Co-Training</td><td>79.7</td><td>42.1</td><td>60.0</td><td>57.6</td><td>44.0</td></tr>
+                <tr class="highlight"><td>Default GEM</td><td>81.1</td><td>47.8</td><td>65.2</td><td>63.0</td><td>48.9</td></tr>
+              </tbody>
+            </table>
+            <p>
+              这个表支撑两个关键 claim：depth 比 RGB 更适合作为空间监督；progressive training 比 direct end-to-end co-training 更稳定。
+            </p>
+            <figure>
+              <img src="./assets/gem-figure-5-depth.png" alt="GEM 与 Qwen3-VL-SFT 的深度生成对比" />
+              <figcaption>
+                Figure 5：标准 SFT visual features 生成的深度缺少结构细节；GEM features 生成的 depth 更完整，
+                说明 depth supervision 确实改变了 visual representation。
+              </figcaption>
+            </figure>
+          </section>
+
+          <section id="limits" class="section">
+            <h2>局限与疑问</h2>
+            <ul>
+              <li><strong>算力门槛高：</strong>VLM 预训练使用 32 张 A800；真实 VLA 任务微调用 8 张 A800。</li>
+              <li><strong>伪深度依赖强：</strong>部分数据用 DepthAnythingv3 生成 pseudo depth，监督质量会影响结论。</li>
+              <li><strong>数据构建复杂：</strong>GEM-4M 依赖多源数据、SAM3、CoTracker3、Qwen3 等自动标注流程。</li>
+              <li><strong>真实任务范围有限：</strong>真实机器人验证主要集中在 cloth folding、unzipping、table bussing。</li>
+              <li><strong>“物理知识”表述要谨慎：</strong>更稳妥的说法是 visual tokens 更包含几何/结构信息。</li>
+            </ul>
+          </section>
+
+          <section id="takeaways" class="section">
+            <h2>对 AD + World Model 的启发</h2>
+            <p>
+              GEM 虽然不是自动驾驶论文，但它对 AD world model 很有启发：生成监督的价值不在于生成结果本身，
+              而在于选择一个和下游决策强相关的结构目标来塑造 representation。
+            </p>
+            <pre><code>Robotics manipulation: depth supervision -> geometry-aware visual tokens
+Autonomous driving: BEV / occupancy / future latent -> planning-aware scene tokens</code></pre>
+            <ul>
+              <li>不要盲目做 RGB future generation；先问下游动作真正需要什么结构信息。</li>
+              <li>生成 head 和理解 backbone 的空间不天然对齐，progressive training 或 two-stage design 很重要。</li>
+              <li>普通组可以做轻量实验：冻结 backbone，比较 depth / occupancy / BEV / future latent 哪种监督更适合规划。</li>
+            </ul>
+          </section>
+        </article>
+      </div>
+    </main>
+  </body>
+</html>
