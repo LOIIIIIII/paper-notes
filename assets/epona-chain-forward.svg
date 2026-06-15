@@ -1,0 +1,48 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="620" viewBox="0 0 1200 620" role="img" aria-labelledby="title desc">
+  <title id="title">Epona chain-of-forward training</title>
+  <desc id="desc">A conceptual structure diagram for Epona chain-of-forward training, showing teacher forcing and self-predicted latent feedback.</desc>
+  <defs>
+    <style>
+      .bg{fill:#fbfffd}.panel{fill:#fff;stroke:#d5e7e2;stroke-width:2;rx:18}.soft{fill:#edf8f5;stroke:#a8d9d1;stroke-width:2;rx:18}
+      .model{fill:#dff3ef;stroke:#007d72;stroke-width:3;rx:18}.pred{fill:#fff4d8;stroke:#e8a927;stroke-width:2;rx:10}.gt{fill:#e7f7e9;stroke:#5eb66a;stroke-width:2;rx:10}
+      .txt{font:500 16px -apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans SC",sans-serif;fill:#40504d}.h{font:750 24px -apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans SC",sans-serif;fill:#007d72}
+      .title{font:760 32px -apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans SC",sans-serif;fill:#152321}.code{font:700 17px "SFMono-Regular",Consolas,monospace;fill:#2b66a8}
+      .arrow{stroke:#007d72;stroke-width:3;fill:none;marker-end:url(#arrow)}.dash{stroke:#647774;stroke-width:2.5;fill:none;stroke-dasharray:8 8;marker-end:url(#arrow-gray)}
+      .loss{stroke:#e8a927;stroke-width:2.5;fill:none;marker-end:url(#arrow-gold)}
+    </style>
+    <marker id="arrow" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto"><path d="M2,2 L10,6 L2,10 Z" fill="#007d72"/></marker>
+    <marker id="arrow-gray" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto"><path d="M2,2 L10,6 L2,10 Z" fill="#647774"/></marker>
+    <marker id="arrow-gold" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto"><path d="M2,2 L10,6 L2,10 Z" fill="#e8a927"/></marker>
+  </defs>
+  <rect class="bg" width="1200" height="620"/>
+  <text class="title" x="54" y="58">3.4 Chain-of-Forward Training：让模型在训练时见到自己的预测误差</text>
+  <rect class="panel" x="54" y="90" width="1092" height="460"/>
+
+  <text class="h" x="92" y="132">Teacher forcing 部分</text>
+  <text class="txt" x="92" y="162">训练时用真实历史 latent 预测下一步，并和真实未来算 rectified flow loss。</text>
+  <g transform="translate(95 190)">
+    <rect class="gt" x="0" y="0" width="74" height="52"/><text class="code" x="22" y="33">x1</text>
+    <rect class="gt" x="106" y="0" width="74" height="52"/><text class="code" x="128" y="33">x2</text>
+    <rect class="gt" x="212" y="0" width="74" height="52"/><text class="code" x="234" y="33">x3</text>
+    <text class="code" x="322" y="35">...</text>
+    <rect class="gt" x="390" y="0" width="74" height="52"/><text class="code" x="412" y="33">xT</text>
+  </g>
+  <path class="arrow" d="M550 216 L640 216"/>
+  <rect class="model" x="654" y="166" width="250" height="100"/>
+  <text class="h" x="735" y="224">Epona</text>
+  <path class="arrow" d="M918 216 L1002 216"/>
+  <rect class="pred" x="1014" y="190" width="82" height="52"/><text class="code" x="1029" y="223">x̂T+1</text>
+  <path class="loss" d="M1055 250 L1055 312"/>
+  <rect class="gt" x="1014" y="326" width="82" height="52"/><text class="code" x="1030" y="359">xT+1</text>
+  <text class="txt" x="936" y="410">预测和真实下一帧之间计算 loss</text>
+
+  <text class="h" x="92" y="456">Chain-of-forward 部分</text>
+  <text class="txt" x="92" y="486">周期性地把模型估计出的 clean latent 反馈回历史窗口，继续 forward 到更远未来。</text>
+  <rect class="pred" x="440" y="458" width="86" height="54"/><text class="code" x="455" y="492">x̂T+1</text>
+  <path class="dash" d="M528 484 C610 440, 690 440, 760 484"/>
+  <rect class="model" x="770" y="436" width="160" height="86"/>
+  <text class="h" x="817" y="487">Epona</text>
+  <path class="arrow" d="M940 480 L1015 480"/>
+  <rect class="pred" x="1028" y="454" width="86" height="54"/><text class="code" x="1042" y="488">x̂T+2</text>
+  <text class="txt" x="446" y="545">核心：训练分布更接近推理时的 autoregressive rollout。</text>
+</svg>

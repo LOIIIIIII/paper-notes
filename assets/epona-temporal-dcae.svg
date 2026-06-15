@@ -1,0 +1,58 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="620" viewBox="0 0 1200 620" role="img" aria-labelledby="title desc">
+  <title id="title">Epona temporal-aware DCAE decoder</title>
+  <desc id="desc">A conceptual diagram for Epona temporal-aware DCAE decoder, showing fixed encoder, compact latents, temporal self-attention, and decoder for consistent video frames.</desc>
+  <defs>
+    <style>
+      .bg{fill:#fbfffd}.panel{fill:#fff;stroke:#d5e7e2;stroke-width:2;rx:18}.soft{fill:#edf8f5;stroke:#a8d9d1;stroke-width:2;rx:18}
+      .enc{fill:#e8f3fb;stroke:#88bce1;stroke-width:2;rx:14}.attn{fill:#e6f7ef;stroke:#4aae71;stroke-width:2;rx:14}.dec{fill:#fff1dc;stroke:#e5a13a;stroke-width:2;rx:14}
+      .frame{fill:#f8fbff;stroke:#88bce1;stroke-width:2;rx:10}.latent{fill:#dff3ef;stroke:#007d72;stroke-width:2;rx:8}
+      .title{font:760 32px -apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans SC",sans-serif;fill:#152321}.h{font:750 23px -apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans SC",sans-serif;fill:#007d72}
+      .txt{font:500 16px -apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans SC",sans-serif;fill:#40504d}.small{font:650 14px -apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans SC",sans-serif;fill:#647774}
+      .arrow{stroke:#007d72;stroke-width:3;fill:none;marker-end:url(#arrow)}.warn{fill:#fff4f1;stroke:#d75d45;stroke-width:2;rx:14}
+    </style>
+    <marker id="arrow" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto"><path d="M2,2 L10,6 L2,10 Z" fill="#007d72"/></marker>
+  </defs>
+  <rect class="bg" width="1200" height="620"/>
+  <text class="title" x="54" y="58">3.5 Temporal-aware DCAE：减少逐帧解码的闪烁</text>
+  <rect class="panel" x="54" y="92" width="1092" height="456"/>
+
+  <text class="h" x="84" y="134">普通 DCAE 的问题</text>
+  <rect class="warn" x="84" y="154" width="310" height="112"/>
+  <text class="txt" x="108" y="190">DCAE 是 image autoencoder。</text>
+  <text class="txt" x="108" y="222">如果每帧单独 decode，视频中容易出现 flickering。</text>
+  <text class="small" x="108" y="250">原因：不同帧之间没有 temporal interaction。</text>
+
+  <g transform="translate(82 320)">
+    <rect class="frame" x="0" y="0" width="78" height="58"/><text class="small" x="24" y="36">frame</text>
+    <rect class="frame" x="24" y="24" width="78" height="58"/><text class="small" x="48" y="60">frame</text>
+    <rect class="frame" x="48" y="48" width="78" height="58"/><text class="small" x="72" y="84">frame</text>
+  </g>
+  <path class="arrow" d="M225 375 L318 375"/>
+  <rect class="enc" x="330" y="328" width="170" height="92"/>
+  <text class="h" x="370" y="366">DCAE</text>
+  <text class="small" x="368" y="392">Encoder 固定</text>
+  <path class="arrow" d="M512 375 L604 375"/>
+
+  <g transform="translate(620 328)">
+    <rect class="latent" x="0" y="0" width="48" height="38"/><rect class="latent" x="58" y="0" width="48" height="38"/><rect class="latent" x="116" y="0" width="48" height="38"/>
+    <rect class="latent" x="0" y="50" width="48" height="38"/><rect class="latent" x="58" y="50" width="48" height="38"/><rect class="latent" x="116" y="50" width="48" height="38"/>
+    <text class="small" x="16" y="118">compact video latents</text>
+  </g>
+  <path class="arrow" d="M810 375 L888 375"/>
+  <rect class="attn" x="902" y="315" width="198" height="118"/>
+  <text class="h" x="930" y="358">Spatiotemporal</text>
+  <text class="h" x="954" y="388">Self-Attention</text>
+  <text class="small" x="934" y="416">新增在 decoder 前</text>
+
+  <path class="arrow" d="M1000 302 C990 238, 920 214, 840 216 L510 216"/>
+  <rect class="dec" x="420" y="170" width="210" height="92"/>
+  <text class="h" x="476" y="210">DCAE</text>
+  <text class="small" x="468" y="236">Decoder fine-tune</text>
+  <path class="arrow" d="M642 216 L742 216"/>
+  <g transform="translate(760 168)">
+    <rect class="frame" x="0" y="0" width="88" height="64"/><rect class="frame" x="34" y="26" width="88" height="64"/><rect class="frame" x="68" y="52" width="88" height="64"/>
+    <text class="small" x="22" y="142">temporal-consistent frames</text>
+  </g>
+
+  <text class="txt" x="420" y="492">设计动机：保留 DCAE 高压缩效率，同时让多帧 latent 在解码前交换信息，从而降低帧间闪烁。</text>
+</svg>
