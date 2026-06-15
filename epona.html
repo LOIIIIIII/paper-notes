@@ -3,8 +3,8 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Epona 方法精读笔记</title>
-    <meta name="description" content="Epona autoregressive diffusion world model 方法部分精读笔记，包含 chain-of-forward training 与 temporal-aware DCAE 图解。" />
+    <title>Epona 论文精读笔记</title>
+    <meta name="description" content="Epona: Autoregressive Diffusion World Model for Autonomous Driving 中文精读笔记，包含 Figure 1-4、3.4 Chain-of-Forward 与 3.5 Temporal-aware DCAE 详细讲解。" />
     <link rel="stylesheet" href="./styles.css" />
   </head>
   <body class="theme-teal">
@@ -15,6 +15,7 @@
           <a href="./index.html">LVDrive</a>
           <a href="./world4drive.html">World4Drive</a>
           <a href="./autovla.html">AutoVLA</a>
+          <a href="#figures">图解</a>
           <a href="#method">方法</a>
           <a href="#chain">3.4</a>
           <a href="#dcae">3.5</a>
@@ -27,15 +28,16 @@
       <section class="hero">
         <div class="hero-inner">
           <p class="eyebrow">Autoregressive Diffusion World Model</p>
-          <h1>Epona 方法精读笔记</h1>
+          <h1>Epona: 自回归扩散世界模型</h1>
           <p class="hero-summary">
-            Epona 把 driving world model 重写成连续 latent 空间中的自回归下一帧预测问题：
-            MST 建模历史因果动态，TrajDiT 生成未来轨迹，VisDiT 生成动作条件下一帧，并用 chain-of-forward 训练缓解长时漂移。
+            Epona 的核心不是“再做一个长视频生成器”，而是把自动驾驶 world model 改写成
+            <strong>连续 latent 空间中的逐帧扩散预测</strong>：MST 建模历史因果动态，
+            TrajDiT 生成未来轨迹，VisDiT 生成动作条件下一帧，并用 Chain-of-Forward 训练缓解长时漂移。
           </p>
           <div class="meta-grid">
-            <div><span>论文对象</span><strong>Epona，ICCV / CVF Open Access 版本节选</strong></div>
-            <div><span>重点小节</span><strong>3.2 Reformulation · 3.3 Architecture · 3.4 Chain-of-Forward · 3.5 DCAE</strong></div>
-            <div><span>本页新增</span><strong>3.4 与 3.5 两张自绘结构图，并整理你的误差累计问题</strong></div>
+            <div><span>论文对象</span><strong>Epona: Autoregressive Diffusion World Model for Autonomous Driving</strong></div>
+            <div><span>重点章节</span><strong>3.2 Reformulation · 3.3 Architecture · 3.4 Chain-of-Forward · 3.5 DCAE</strong></div>
+            <div><span>本页新增</span><strong>论文 Figure 1-4、3.4/3.5 自绘结构图、误差累计问答整理</strong></div>
           </div>
         </div>
       </section>
@@ -43,63 +45,90 @@
       <div class="layout">
         <aside class="toc" aria-label="目录">
           <a href="#summary">一句话</a>
-          <a href="#formulation">范式对比</a>
-          <a href="#method">模型结构</a>
+          <a href="#figures">Figure 1</a>
+          <a href="#formulation">3.2 范式</a>
+          <a href="#method">3.3 结构</a>
           <a href="#mstdetail">MST</a>
           <a href="#dit">TrajDiT / VisDiT</a>
           <a href="#chain">3.4 Chain</a>
           <a href="#dcae">3.5 DCAE</a>
           <a href="#qa">你的问题</a>
-          <a href="#takeaways">启发</a>
+          <a href="#takeaways">总结</a>
         </aside>
 
         <article class="article">
           <section id="summary" class="section lead-section">
             <h2>一句话总结</h2>
             <p class="lead">
-              Epona 不是一次性生成固定长度未来视频，而是用 causal temporal latent 一步步往后推进，
-              每一步再用 diffusion/rectified flow 生成下一帧图像 latent 和未来轨迹。
+              Epona 把 driving world model 从“固定长度视频块生成”改成“动作条件下的连续 latent 下一帧预测”，
+              所以它既能自回归生成更长未来，也能输出轨迹作为实时 motion planner。
             </p>
           </section>
 
+          <section id="figures" class="section">
+            <h2>Figure 1：Epona 展示的四种能力</h2>
+            <figure>
+              <img src="./assets/epona-figure-1-capabilities.png" alt="Epona Figure 1 capabilities" />
+              <figcaption>Figure 1：Epona 的能力总览：长视频生成、轨迹控制视频生成、交通规则理解、端到端轨迹规划。</figcaption>
+            </figure>
+            <ul>
+              <li><strong>A. Consistent high-resolution long video generation：</strong>给历史驾驶帧后，生成从 0s 到 2min 的未来驾驶场景。它想证明自己不是只能生成几秒短片。</li>
+              <li><strong>B. Trajectory-controlled video generation：</strong>相同 condition frames 下，输入不同轨迹控制，未来视频会对应直行或转弯等不同运动结果。</li>
+              <li><strong>C. Traffic world knowledge understanding：</strong>模型需要理解红灯停、绿灯走这类交通语义，而不是只续写道路纹理。</li>
+              <li><strong>D. End-to-end trajectory planning：</strong>模型不只生成画面，还能预测未来轨迹，因此可以服务自动驾驶规划。</li>
+            </ul>
+          </section>
+
           <section id="formulation" class="section">
-            <h2>Figure 3：为什么要重新定义 world model</h2>
+            <h2>3.2：为什么要重新定义 world model</h2>
+            <figure>
+              <img src="./assets/epona-figure-3-formulation.png" alt="Comparison of different world modeling formulations" />
+              <figcaption>Figure 3：上方是离散 token 自回归，中间是固定窗口 video diffusion，下方是 Epona 的 continuous latent autoregressive diffusion。</figcaption>
+            </figure>
             <p>
-              论文把已有方法分成两类：GPT-style autoregressive 方法和 video diffusion 方法。前者时间灵活，
-              但把图像离散成 tokens 会损失空间细节；后者画质好，但往往一次性生成固定长度未来视频，
-              长时预测要反复调用，容易出现 error accumulation 和 content drift。
+              论文把已有方法分成两类：GPT-style autoregressive 方法和 video diffusion 方法。前者时间长度灵活，
+              但要把图像离散成 token，容易损失高频细节；后者画质强，但通常一次生成固定长度的未来视频，
+              不天然支持 variable-length long-range prediction。
             </p>
             <div class="flow-grid">
               <div>
                 <span>AR Method</span>
                 <h3>离散 token 自回归</h3>
-                <p>优点是长度灵活；缺点是 quantization 损伤高频细节，token-by-token 建模削弱空间相关性。</p>
+                <p>优点是可以一直 next-token；缺点是图像被量化，细节和空间相关性会被削弱。</p>
               </div>
               <div>
                 <span>Video Diffusion</span>
                 <h3>固定窗口联合生成</h3>
-                <p>优点是视觉质量高；缺点是通常生成固定 n 帧，不天然支持任意长度 rollout。</p>
+                <p>优点是视觉质量高；缺点是通常生成固定 n 帧，长时 rollout 要反复调用。</p>
               </div>
               <div>
                 <span>Epona</span>
-                <h3>连续 latent 自回归 + diffusion</h3>
-                <p>在 continuous latent space 中逐步预测下一帧，并用 diffusion 保留细粒度视觉质量。</p>
+                <h3>连续 latent 自回归</h3>
+                <p>一帧一帧往后预测，但预测对象是连续 latent，不是离散图像 token。</p>
               </div>
               <div>
                 <span>Key</span>
                 <h3>因果时间建模</h3>
-                <p>把 future prediction 写成局部条件分布，而不是一整段固定长度视频的全局联合分布。</p>
+                <p>把未来建模成局部条件分布，更贴近驾驶场景中“当前动作导致下一刻状态”的因果链。</p>
               </div>
             </div>
-            <pre><code>Video diffusion: p({O_{T+i}}_{i=1}^n, {O_t, a_t}_{t=1}^T)
-Epona: p(O_{T+1} | {O_t, a_{t-1→t}}_{t=1}^T, a_{T→T+1})</code></pre>
+            <pre><code>Video diffusion:
+p({O_{T+i}}_{i=1}^n, {O_t, a_t}_{t=1}^T)
+
+Epona:
+p(O_{T+1} | {O_t, a_{t-1→t}}_{t=1}^T, a_{T→T+1})</code></pre>
           </section>
 
           <section id="method" class="section">
-            <h2>Figure 2：Epona 总体结构</h2>
+            <h2>3.3：Epona 总体结构</h2>
+            <figure>
+              <img src="./assets/epona-figure-2-overview.png" alt="Epona overview" />
+              <figcaption>Figure 2：Epona 由 DCAE Encoder、MST、TrajDiT、VisDiT 和 Temporal-aware DCAE Decoder 组成。</figcaption>
+            </figure>
             <p>
-              Epona 的输入是历史 condition frames 和 historical trajectories。图像先经 DCAE Encoder 得到连续 latents
-              <code>{Z_t}</code>，历史轨迹用 <code>a_{t1→t2}=(Δθ, Δx, Δy)</code> 表示。MST 把视觉 latent 和动作序列融合成 compact latent <code>F</code>。
+              Epona 的输入是历史 condition frames 和 historical trajectories。图像先经 DCAE Encoder 得到连续 latent
+              <code>{Z_t}</code>，历史轨迹用 <code>a_{t1→t2}=(Δθ, Δx, Δy)</code> 表示。
+              MST 把视觉 latent 和动作序列融合成 compact latent <code>F</code>。
             </p>
             <pre><code>历史图像 {O_t} + 历史轨迹 {a_{t-1→t}}
         ↓
@@ -108,37 +137,40 @@ DCAE Encoder + MST
 compact latent F
      ↙              ↘
 TrajDiT            VisDiT
-未来 3 秒轨迹       动作条件下一帧图像</code></pre>
+未来轨迹            动作条件下一帧图像 latent</code></pre>
             <p>
-              这个模块化设计很关键：如果要做视频仿真，就用 MST + VisDiT；如果只做实时规划，可以关掉视频分支，只跑 MST + TrajDiT。
+              这个模块化设计很有意思：做 controllable simulation 时主要用 MST + VisDiT；
+              做实时规划时可以用 MST + TrajDiT，因此它试图桥接 driving world model 和 end-to-end planner。
             </p>
           </section>
 
           <section id="mstdetail" class="section">
-            <h2>MST：Multimodal Spatiotemporal Transformer</h2>
+            <h2>MST：历史上下文压缩器</h2>
             <p>
-              MST 输入视觉 latent <code>Z ∈ R^{B×T×L×C}</code> 和动作 <code>a ∈ R^{B×T×3}</code>。
-              它把它们投影到 embedding space 后沿空间维拼接，得到：
+              MST 的全称是 Multimodal Spatiotemporal Transformer。它输入视觉 latent
+              <code>Z ∈ R^{B×T×L×C}</code> 和动作 <code>a ∈ R^{B×T×3}</code>，投影到 embedding space 后沿空间维拼接：
             </p>
             <pre><code>E ∈ R^{B×T×(L+3)×D}</code></pre>
             <p>
-              然后交替使用 causal temporal attention 和 multimodal spatial attention。前者保证时间因果结构，
-              后者融合视觉场景和历史动作。最后用最后一帧 embedding 得到 compact latent <code>F</code>，供两个 DiT 分支使用。
+              然后它交替使用两类 attention：<strong>causal temporal attention</strong> 负责“历史如何沿时间传递”，
+              <strong>multimodal spatial attention</strong> 负责“每一帧内部视觉 latent 和动作如何融合”。
+              最后取最后一帧 embedding 得到 <code>F</code>，作为后续 TrajDiT 与 VisDiT 的条件。
             </p>
           </section>
 
           <section id="dit" class="section">
             <h2>TrajDiT 与 VisDiT</h2>
-            <h3>TrajDiT</h3>
+            <h3>TrajDiT：轨迹规划扩散模型</h3>
             <p>
-              TrajDiT 是轨迹规划扩散模型。训练时给未来轨迹加噪，让模型预测 rectified flow velocity：
+              TrajDiT 用一个小型 diffusion transformer 生成未来轨迹。训练时给真实未来轨迹加噪，
+              模型学习 rectified flow velocity：
             </p>
             <pre><code>L_traj = E[ || v_traj(a_t, t) - (a - ε) ||² ]</code></pre>
-            <p>推理时从高斯噪声 denoise 出未来轨迹。</p>
-            <h3>VisDiT</h3>
+            <p>推理时从高斯噪声出发，在 compact latent <code>F</code> 条件下 denoise 出未来 trajectory plan。</p>
+            <h3>VisDiT：动作条件下一帧生成</h3>
             <p>
-              VisDiT 生成下一帧图像 latent <code>Z_{T+1}</code>，并额外接收动作控制 <code>a_{T→T+1}</code>。
-              这使它能做 trajectory-controlled video generation。
+              VisDiT 生成下一帧图像 latent <code>Z_{T+1}</code>，并额外接收动作控制
+              <code>a_{T→T+1}</code>。所以同一历史场景下，给不同未来动作，可以生成不同未来画面。
             </p>
             <pre><code>L = L_traj + L_vis</code></pre>
           </section>
@@ -146,23 +178,29 @@ TrajDiT            VisDiT
           <section id="chain" class="section">
             <h2>3.4 Chain-of-Forward Training</h2>
             <figure>
+              <img src="./assets/epona-figure-4-chain-forward.png" alt="Epona original Figure 4 chain-of-forward" />
+              <figcaption>Figure 4：原论文概念图，x 可以是 image latent，也可以是 trajectory。</figcaption>
+            </figure>
+            <figure>
               <img src="./assets/epona-chain-forward.svg" alt="Epona chain-of-forward training structure diagram" />
-              <figcaption>
-                自绘图：chain-of-forward 的核心是训练时周期性地把模型自己预测的 latent 反馈回去，模拟推理阶段的不完美历史。
-              </figcaption>
+              <figcaption>自绘图：Chain-of-Forward 的核心是训练时周期性地把模型自己预测的 latent 反馈回去，模拟推理阶段的不完美历史。</figcaption>
             </figure>
             <p>
-              普通 teacher forcing 训练时模型看真实历史帧；推理时模型却要看自己生成的历史帧。这种训练-推理分布差异会导致误差累计。
-              Epona 的做法是：周期性地进行多次 forward，把 self-predicted frames/latents 用作后续条件，让模型学会在有噪声的历史上继续预测。
+              普通 teacher forcing 训练时，模型看到的历史上下文都是真实帧；但推理时，模型需要用自己生成的帧继续生成更远未来。
+              这会带来 train-test domain gap，进而导致 autoregressive drift。
+            </p>
+            <p>
+              Chain-of-Forward 的做法是：训练过程中周期性执行多次 forward，把 self-predicted frames/latents 用作后续条件。
+              这样模型在训练时就见过“有一点预测误差的历史”，从而更适应长时 rollout。
             </p>
             <p>
               为了效率，作者没有完整跑多步 diffusion sampling，而是用 rectified flow 的 velocity 一步估计 clean latent：
             </p>
             <pre><code>x̂_(0) = x_(t) + t v_Θ(x_(t), t)</code></pre>
             <div class="callout">
-              <strong>严谨说法</strong>
+              <strong>严谨理解</strong>
               <p>
-                Chain-of-forward 不是消灭 autoregressive error accumulation，而是降低 teacher forcing 与 autoregressive sampling 的 domain gap，
+                Chain-of-Forward 不是消灭误差累计，而是降低 teacher forcing 与 autoregressive sampling 的分布差，
                 让模型对自身预测误差更鲁棒。
               </p>
             </div>
@@ -172,37 +210,40 @@ TrajDiT            VisDiT
             <h2>3.5 Temporal-aware DCAE Decoder</h2>
             <figure>
               <img src="./assets/epona-temporal-dcae.svg" alt="Epona temporal-aware DCAE decoder structure diagram" />
-              <figcaption>
-                自绘图：Temporal-aware DCAE 在 decoder 前加入 spatiotemporal self-attention，让多帧 latent 先交互，再解码成更一致的视频帧。
-              </figcaption>
+              <figcaption>自绘图：Temporal-aware DCAE 在 decoder 前加入 spatiotemporal self-attention，让多帧 latent 先交互，再解码成更一致的视频帧。</figcaption>
             </figure>
             <p>
               Epona 使用 DCAE 编码图像。DCAE 相比普通 autoencoder 压缩更强，可以把 latent token 数减少约 16 倍，
-              从而节省显存并支持更长历史上下文。但 DCAE 原本是 image autoencoder，逐帧 decode 视频时缺少时间交互，容易 flickering。
+              从而节省显存并支持更长历史上下文。
             </p>
             <p>
-              作者的解决方式是在 DCAE decoder 前添加 spatiotemporal self-attention layers，同时保持 encoder 固定，
-              尽量复用预训练参数，只让解码端具备帧间交互能力。
+              但 DCAE 原本是 image autoencoder。逐帧 decode 视频时，每一帧独立恢复，缺少跨帧信息交互，
+              所以容易出现 flickering，也就是画面闪烁、纹理抖动、边缘不稳定。
+            </p>
+            <p>
+              作者的解决方式是在 DCAE decoder 前添加 spatiotemporal self-attention layers，同时保持 encoder 固定。
+              这让多帧 latent 在解码前互相对齐，尽量提升视频的 temporal consistency。
             </p>
           </section>
 
           <section id="qa" class="section">
-            <h2>你的问题整理</h2>
-            <h3>1. “不能很好支持 variable-length long-range prediction” 是误差累计吗？</h3>
+            <h2>你问到的几个关键问题</h2>
+            <h3>1. “不能很好支持 variable-length long-range prediction，容易漂”是在说误差累计吗？</h3>
             <p>
-              是其中一个核心原因。固定长度 video diffusion 如果想生成更长未来，通常要反复调用模型；
-              一旦前一段生成里有小错误，后一段会基于这个错误继续生成，出现 error accumulation 和 content drift。
+              是的，核心就是误差累计，但不只是数值误差。它还包括视觉质量下降、物体位置漂移、
+              车道线变形、交通灯语义不稳定、场景突然跳变等。对于自动驾驶，视觉漂移会进一步影响轨迹规划。
             </p>
-            <h3>2. Epona 怎么解决？</h3>
+            <h3>2. Epona 是怎么解决这个问题的？</h3>
             <p>
-              它把固定长度联合生成改成 continuous latent 中的 autoregressive next-frame prediction，
-              并用 chain-of-forward 训练让模型适应自身预测作为条件。
+              它用了三层缓解：第一，把固定长度视频生成改成逐帧 next-frame prediction；
+              第二，在 continuous latent 里用 diffusion 预测，减少离散 token 量化失真；
+              第三，用 Chain-of-Forward 训练，让模型学会处理自己生成的、不完美的历史上下文。
             </p>
             <h3>3. 这样不也会误差累计吗？</h3>
             <p>
-              会。只要是 autoregressive，就仍可能误差累计。Epona 的贡献是缓解，而不是从理论上消灭：
-              latent-space temporal modeling 降低像素级错误传播，spatiotemporal decoupling 降低任务难度，
-              chain-of-forward 让模型训练时见过不完美历史。
+              会。只要是 autoregressive，就仍有误差累计风险。Epona 的贡献不是理论上消灭误差，
+              而是让误差累计更慢、更可控：latent-space prediction 减少像素级噪声传播，
+              chain-of-forward 降低训练和推理的分布差，Temporal-aware DCAE 减少逐帧解码带来的闪烁。
             </p>
           </section>
 
@@ -211,8 +252,8 @@ TrajDiT            VisDiT
             <ul>
               <li>长时 world model 不一定要一次性生成固定长度视频，可以转成 sequential local prediction。</li>
               <li>视频生成和轨迹规划可以共享 temporal latent，但用不同 DiT 分支优化。</li>
-              <li>训练时必须处理 exposure bias，否则长时 rollout 很容易只在短窗口内好看。</li>
-              <li>“解决误差累计”这类表述要谨慎，最好写成“mitigate autoregressive drift”。</li>
+              <li>训练时必须处理 exposure bias，否则长时 rollout 很容易短期好看、长期漂移。</li>
+              <li>写论文时，“解决误差累计”要谨慎，最好表述成 “mitigate autoregressive drift”。</li>
             </ul>
           </section>
         </article>
