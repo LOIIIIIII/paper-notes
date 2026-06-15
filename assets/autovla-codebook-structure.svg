@@ -1,0 +1,112 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="620" viewBox="0 0 1200 620" role="img" aria-labelledby="title desc">
+  <title id="title">AutoVLA action codebook structure</title>
+  <desc id="desc">Diagram showing how continuous trajectories are segmented, mapped to action tokens, autoregressively generated, and decoded back into a trajectory.</desc>
+  <defs>
+    <style>
+      .bg { fill: #fffdfc; }
+      .panel { fill: #ffffff; stroke: #ead9d5; stroke-width: 2; rx: 18; }
+      .panel-soft { fill: #fff4f1; stroke: #efc6bc; stroke-width: 2; rx: 18; }
+      .title { font: 700 30px -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans SC", sans-serif; fill: #251b1b; }
+      .h { font: 700 21px -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans SC", sans-serif; fill: #c4432b; }
+      .t { font: 500 16px -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans SC", sans-serif; fill: #514544; }
+      .s { font: 650 14px -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans SC", sans-serif; fill: #766967; }
+      .code { font: 700 16px "SFMono-Regular", Consolas, monospace; fill: #196fa6; }
+      .arrow { stroke: #c4432b; stroke-width: 3; fill: none; marker-end: url(#arrow); }
+      .arrow-blue { stroke: #196fa6; stroke-width: 3; fill: none; marker-end: url(#arrow-blue); }
+      .grid { stroke: #ead9d5; stroke-width: 1.4; }
+      .route { stroke: #c4432b; stroke-width: 7; fill: none; stroke-linecap: round; stroke-linejoin: round; }
+      .route-soft { stroke: #f2a091; stroke-width: 4; fill: none; stroke-linecap: round; stroke-linejoin: round; stroke-dasharray: 8 8; }
+      .token { fill: #fde0dc; stroke: #e6a196; stroke-width: 1.5; rx: 10; }
+      .token-blue { fill: #e8f3fb; stroke: #9cc8e7; stroke-width: 1.5; rx: 10; }
+      .dot { fill: #c4432b; }
+      .dot-blue { fill: #196fa6; }
+    </style>
+    <marker id="arrow" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto">
+      <path d="M2,2 L10,6 L2,10 Z" fill="#c4432b"/>
+    </marker>
+    <marker id="arrow-blue" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto">
+      <path d="M2,2 L10,6 L2,10 Z" fill="#196fa6"/>
+    </marker>
+  </defs>
+  <rect class="bg" width="1200" height="620"/>
+  <text class="title" x="54" y="58">AutoVLA 动作码本：把连续轨迹变成 VLM 可生成的 action tokens</text>
+
+  <rect class="panel" x="54" y="92" width="250" height="190"/>
+  <text class="h" x="78" y="128">1. 连续专家轨迹</text>
+  <text class="t" x="78" y="158">未来 5 秒轨迹先按 0.5 秒切段。</text>
+  <path class="route-soft" d="M88 235 C120 190, 150 215, 180 178 S245 178, 270 130"/>
+  <path class="route" d="M88 235 C120 190, 150 215, 180 178 S245 178, 270 130"/>
+  <circle class="dot" cx="88" cy="235" r="7"/>
+  <circle class="dot" cx="122" cy="192" r="6"/>
+  <circle class="dot" cx="158" cy="207" r="6"/>
+  <circle class="dot" cx="190" cy="171" r="6"/>
+  <circle class="dot" cx="232" cy="165" r="6"/>
+  <text class="s" x="84" y="262">每段是一个局部 motion segment</text>
+
+  <path class="arrow" d="M318 186 L390 186"/>
+
+  <rect class="panel-soft" x="408" y="92" width="332" height="190"/>
+  <text class="h" x="432" y="128">2. K-disk 聚类生成码本</text>
+  <text class="t" x="432" y="158">从真实 0.5 秒运动片段里选出 2048 个代表动作。</text>
+  <g transform="translate(442 184)">
+    <line class="grid" x1="0" y1="0" x2="250" y2="0"/>
+    <line class="grid" x1="0" y1="42" x2="250" y2="42"/>
+    <line class="grid" x1="0" y1="84" x2="250" y2="84"/>
+    <line class="grid" x1="0" y1="0" x2="0" y2="84"/>
+    <line class="grid" x1="82" y1="0" x2="82" y2="84"/>
+    <line class="grid" x1="166" y1="0" x2="166" y2="84"/>
+    <line class="grid" x1="250" y1="0" x2="250" y2="84"/>
+    <circle class="dot" cx="34" cy="22" r="7"/>
+    <circle class="dot-blue" cx="111" cy="62" r="7"/>
+    <circle class="dot" cx="209" cy="29" r="7"/>
+    <circle class="dot-blue" cx="159" cy="15" r="7"/>
+    <circle class="dot" cx="63" cy="73" r="7"/>
+  </g>
+  <text class="code" x="432" y="292">A = {a0, a1, ..., a2047},  ak = (Δx, Δy, Δθ)</text>
+
+  <path class="arrow" d="M754 186 L826 186"/>
+
+  <rect class="panel" x="844" y="92" width="302" height="190"/>
+  <text class="h" x="868" y="128">3. 训练时 tokenization</text>
+  <text class="t" x="868" y="158">每个真实片段映射到最近的码本 token。</text>
+  <rect class="token" x="870" y="187" width="82" height="36"/>
+  <rect class="token" x="962" y="187" width="82" height="36"/>
+  <rect class="token" x="1054" y="187" width="82" height="36"/>
+  <text class="code" x="884" y="211">&lt;a520&gt;</text>
+  <text class="code" x="976" y="211">&lt;a920&gt;</text>
+  <text class="code" x="1068" y="211">&lt;a103&gt;</text>
+  <text class="s" x="872" y="252">连续轨迹监督变成 next-token prediction。</text>
+
+  <rect class="panel" x="86" y="352" width="322" height="190"/>
+  <text class="h" x="110" y="388">4. 推理时自回归生成</text>
+  <text class="t" x="110" y="418">码本固定不变，变化的是下一步 token 的概率分布。</text>
+  <rect class="token-blue" x="112" y="448" width="84" height="38"/>
+  <rect class="token-blue" x="208" y="448" width="84" height="38"/>
+  <rect class="token-blue" x="304" y="448" width="84" height="38"/>
+  <text class="code" x="126" y="473">&lt;a22&gt;</text>
+  <text class="code" x="222" y="473">&lt;a12&gt;</text>
+  <text class="code" x="318" y="473">&lt;a26&gt;</text>
+  <text class="s" x="112" y="513">p(action | 图像、指令、自车状态、已生成 tokens)</text>
+
+  <path class="arrow-blue" d="M426 448 L498 448"/>
+
+  <rect class="panel-soft" x="516" y="352" width="286" height="190"/>
+  <text class="h" x="540" y="388">5. 查表解码</text>
+  <text class="t" x="540" y="418">每个 token 查到固定的局部运动。</text>
+  <text class="code" x="540" y="456">&lt;a22&gt; → (Δx22, Δy22, Δθ22)</text>
+  <text class="code" x="540" y="488">&lt;a12&gt; → (Δx12, Δy12, Δθ12)</text>
+  <text class="code" x="540" y="520">&lt;a26&gt; → (Δx26, Δy26, Δθ26)</text>
+
+  <path class="arrow-blue" d="M820 448 L892 448"/>
+
+  <rect class="panel" x="910" y="352" width="236" height="190"/>
+  <text class="h" x="934" y="388">6. 逐段累加成轨迹</text>
+  <text class="t" x="934" y="418">同一个 token 的含义固定，但作用在不断更新的 ego pose 上。</text>
+  <path class="route" d="M948 506 C970 486, 990 490, 1009 470 S1052 450, 1080 424"/>
+  <circle class="dot" cx="948" cy="506" r="6"/>
+  <circle class="dot" cx="979" cy="486" r="5"/>
+  <circle class="dot" cx="1009" cy="470" r="5"/>
+  <circle class="dot" cx="1044" cy="452" r="5"/>
+  <circle class="dot" cx="1080" cy="424" r="5"/>
+  <text class="s" x="934" y="530">pose0 → pose1 → ... → pose10</text>
+</svg>

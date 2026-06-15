@@ -10,6 +10,7 @@
 | LVDrive 论文笔记 | [Jekyll post 源文档](./_posts/2026-06-07-lvdrive.md) | [论文笔记 Markdown](./papers/LVDrive/LVDrive论文笔记.md), [Word 精读笔记](./papers/LVDrive/LVDrive论文精读笔记.docx) |
 | GEM 生成式监督具身智能论文笔记 | [GitHub Pages](https://loiiiiiii.github.io/paper-notes/gem.html) | [论文笔记 Markdown](./papers/GEM/GEM论文笔记.md), [HTML 页面](./gem.html) |
 | World4Drive 意图感知 latent world model 论文笔记 | [GitHub Pages](https://loiiiiiii.github.io/paper-notes/world4drive.html) | [论文笔记 Markdown](./papers/World4Drive/World4Drive论文笔记.md), [HTML 页面](./world4drive.html) |
+| AutoVLA 动作码本与自适应推理论文笔记 | [GitHub Pages](https://loiiiiiii.github.io/paper-notes/autovla.html) | [论文笔记 Markdown](./papers/AutoVLA/AutoVLA论文笔记.md), [HTML 页面](./autovla.html) |
 | MapAgent2CARLA 多智能体地图生成框架 | [GitHub Pages](https://loiiiiiii.github.io/paper-notes/mapagent2carla.html) | [框架 Markdown](./docs/mapagent2carla-framework.md), [博客 Markdown](./_posts/2026-06-09-mapagent2carla.md), [HTML 页面](./mapagent2carla.html) |
 
 > GitHub Pages 更新可能有几十秒到几分钟延迟。如果在线页面暂时没刷新，可以先看仓库里的 HTML / Markdown 源文件。
@@ -23,3 +24,5 @@ MapAgent2CARLA 的核心思想是：从多源地图图像出发，通过多智�
 GEM 的核心思想是：用 depth map generation 作为生成式监督，让 Embodied VLM 的视觉 token 同时包含语义和几何结构，并迁移到 GEM-VLA 的机器人连续动作生成。
 
 World4Drive 的核心思想是：让 latent world model 针对不同驾驶意图想象多个未来世界，并用 world model selector 评估和选择更合理的规划轨迹。
+
+AutoVLA 的核心思想是：用 physical action codebook 把连续轨迹变成 VLM 可生成的 action tokens，并通过 SFT/RFT 学会快慢思考和更高效的轨迹生成。
