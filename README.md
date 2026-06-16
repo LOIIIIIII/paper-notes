@@ -13,6 +13,7 @@
 | AutoVLA 动作码本与自适应推理论文笔记 | [GitHub Pages](https://loiiiiiii.github.io/paper-notes/autovla.html) | [论文笔记 Markdown](./papers/AutoVLA/AutoVLA论文笔记.md), [HTML 页面](./autovla.html) |
 | Epona 自回归扩散 world model 方法笔记 | [GitHub Pages](https://loiiiiiii.github.io/paper-notes/epona.html) | [论文笔记 Markdown](./papers/Epona/Epona方法精读笔记.md), [HTML 页面](./epona.html) |
 | DLWM Gaussian-centric 预训练论文笔记 | [GitHub Pages](https://loiiiiiii.github.io/paper-notes/dlwm.html) | [论文笔记 Markdown](./papers/DLWM/DLWM论文笔记.md), [HTML 页面](./dlwm.html) |
+| ResWorld Temporal Residual World Model 论文笔记 | [GitHub Pages](https://loiiiiiii.github.io/paper-notes/resworld.html) | [论文笔记 Markdown](./papers/ResWorld/ResWorld论文笔记.md), [HTML 页面](./resworld.html) |
 | MapAgent2CARLA 多智能体地图生成框架 | [GitHub Pages](https://loiiiiiii.github.io/paper-notes/mapagent2carla.html) | [框架 Markdown](./docs/mapagent2carla-framework.md), [博客 Markdown](./_posts/2026-06-09-mapagent2carla.md), [HTML 页面](./mapagent2carla.html) |
 
 > GitHub Pages 更新可能有几十秒到几分钟延迟。如果在线页面暂时没刷新，可以先看仓库里的 HTML / Markdown 源文件。
@@ -32,3 +33,5 @@ AutoVLA 的核心思想是：用 physical action codebook 把连续轨迹变成 
 Epona 的核心思想是：用 continuous latent autoregression 和 diffusion generation 结合长时世界建模、动作条件视频生成与实时轨迹规划，并通过 chain-of-forward 训练缓解长时漂移。
 
 DLWM 的核心思想是：用两阶段 Gaussian-centric 自监督预训练学习 3D Gaussian 几何语义和任务导向时序 latent，并用 dual latent world models 分别提升 occupancy perception/forecasting 与 motion planning。
+
+ResWorld 的核心思想是：用 temporal residual 让 world model 聚焦动态对象，避免冗余静态建模，并通过 Future-Guided Trajectory Refinement 让未来 BEV 特征显式修正轨迹。

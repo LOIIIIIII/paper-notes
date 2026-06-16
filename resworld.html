@@ -1,0 +1,329 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>ResWorld 论文精读笔记</title>
+    <meta
+      name="description"
+      content="ResWorld: Temporal Residual World Model for End-to-End Autonomous Driving 中文论文精读笔记。"
+    />
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body class="theme-amber">
+    <header class="site-header">
+      <nav class="nav">
+        <a class="brand" href="./resworld.html">ResWorld 笔记</a>
+        <div class="nav-links">
+          <a href="./index.html">LVDrive</a>
+          <a href="./world4drive.html">World4Drive</a>
+          <a href="./dlwm.html">DLWM</a>
+          <a href="./epona.html">Epona</a>
+          <a href="#innovation">创新</a>
+          <a href="#method">方法</a>
+          <a href="#experiments">实验</a>
+          <a href="#limits">局限</a>
+        </div>
+      </nav>
+    </header>
+
+    <main>
+      <section class="hero">
+        <div class="hero-inner">
+          <p class="eyebrow">Temporal Residual World Model / Planning</p>
+          <h1>ResWorld 论文精读笔记</h1>
+          <p class="hero-summary">
+            ResWorld 的核心判断很直接：未来场景里大部分静态区域不需要重复建模，
+            真正值得 world model 花力气的是动态对象。它用 temporal residual 提取动态变化，
+            再用未来 BEV 特征显式 refine 轨迹。
+          </p>
+          <div class="meta-grid">
+            <div>
+              <span>论文标题</span>
+              <strong>ResWorld: Temporal Residual World Model for End-to-End Autonomous Driving</strong>
+            </div>
+            <div>
+              <span>来源与代码</span>
+              <strong>ICLR 2026 conference paper；论文给出代码仓库 github.com/mengtan00/ResWorld.git</strong>
+            </div>
+            <div>
+              <span>关键词</span>
+              <strong>Temporal Residual · TR-World · FGTR · BEV Feature · World Model Collapse</strong>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <div class="layout">
+        <aside class="toc" aria-label="目录">
+          <a href="#summary">一句话</a>
+          <a href="#problem">问题</a>
+          <a href="#innovation">创新点</a>
+          <a href="#method">框架</a>
+          <a href="#residual">Temporal Residual</a>
+          <a href="#trworld">TR-World</a>
+          <a href="#fgtr">FGTR</a>
+          <a href="#experiments">实验</a>
+          <a href="#ablations">消融</a>
+          <a href="#limits">局限</a>
+          <a href="#takeaways">启发</a>
+        </aside>
+
+        <article class="article">
+          <section id="summary" class="section lead-section">
+            <h2>一句话总结</h2>
+            <p class="lead">
+              ResWorld 用 temporal residual 表示场景中真正变化的动态对象，让 world model 避免重复预测静态背景；
+              同时通过 Future-Guided Trajectory Refinement 让 future BEV features 直接参与轨迹修正。
+            </p>
+          </section>
+
+          <section id="problem" class="section">
+            <h2>论文要解决的问题</h2>
+            <p>
+              很多 end-to-end autonomous driving world model 会把 future scene prediction 当作 proxy task，
+              用未来场景建模增强规划能力。但作者认为已有 world model 有两个明显浪费：
+            </p>
+            <ul>
+              <li><strong>静态区域重复建模：</strong>道路、建筑、地面等大部分 BEV 信息在短时间未来里变化很小，不需要 world model 反复预测。</li>
+              <li><strong>动态对象建模不足：</strong>真正影响规划的是车辆、行人等动态对象，但它们不容易在不依赖检测/跟踪辅助任务的情况下被显式抽出。</li>
+              <li><strong>未来特征和轨迹交互太浅：</strong>很多方法把 future prediction 当辅助 loss，轨迹并没有显式从 future BEV 中检查碰撞和可行区域。</li>
+            </ul>
+            <figure>
+              <img src="./assets/resworld-figure-1-comparison.png" alt="Normal world model and ResWorld comparison" />
+              <figcaption>
+                Figure 1：普通 world model 建模整个未来场景；ResWorld 只处理 temporal residual 中的动态变化，并用未来 BEV 显式修正先验轨迹。
+              </figcaption>
+            </figure>
+          </section>
+
+          <section id="innovation" class="section">
+            <h2>创新点怎么理解</h2>
+            <div class="innovation-grid">
+              <div>
+                <span>Innovation 1</span>
+                <h3>Temporal residual for dynamics</h3>
+                <p>
+                  对齐历史 BEV 到当前坐标系后，计算相邻时间的 sparse scene query residual。
+                  残差主要对应同一空间位置随时间变化的信息，因此能突出动态对象。
+                </p>
+              </div>
+              <div>
+                <span>Innovation 2</span>
+                <h3>Current-coordinate future BEV</h3>
+                <p>
+                  未来 BEV 仍用当前 BEV 坐标系表示，这样静态区域可以直接由当前 BEV 保留，
+                  world model 只需要补动态对象的未来分布。
+                </p>
+              </div>
+              <div>
+                <span>Innovation 3</span>
+                <h3>TR-World</h3>
+                <p>
+                  Temporal Residual World Model 只输入 temporal residual，经 self-attention 聚合动态信息，
+                  再用 TokenFuser 把动态未来分布展开回 BEV feature。
+                </p>
+              </div>
+              <div>
+                <span>Innovation 4</span>
+                <h3>FGTR</h3>
+                <p>
+                  Future-Guided Trajectory Refinement 让 waypoint queries 以 prior trajectory 为 reference points
+                  去 future BEV 中采样，从而修正碰撞或偏离 drivable area 的轨迹。
+                </p>
+              </div>
+            </div>
+            <div class="callout">
+              <strong>最值得学习的点</strong>
+              <p>
+                ResWorld 把 world model 的目标从“预测整个未来”改成“预测当前决策真正缺的动态残差信息”。
+                这是一个很工程、也很规划导向的设计。
+              </p>
+            </div>
+          </section>
+
+          <section id="method" class="section">
+            <h2>整体框架</h2>
+            <figure>
+              <img src="./assets/resworld-figure-2-framework.png" alt="Overall framework of ResWorld" />
+              <figcaption>
+                Figure 2：ResWorld 从多时刻多视角图像得到 BEV features，一路生成 prior trajectory，另一路计算 temporal residual 并预测 future BEV，再通过 FGTR 得到 final trajectory。
+              </figcaption>
+            </figure>
+            <pre><code>Multi-view images at t, t-1, ..., t-k
+        ↓
+GeoBEV extracts BEV features and aligns them to current coordinates
+        ↓
+Prior branch: fused BEV → scene queries → prior trajectory
+        ↓
+World model branch: temporal residuals → TR-World → future BEV feature
+        ↓
+FGTR: prior trajectory as reference points + future BEV feature
+        ↓
+final trajectory</code></pre>
+          </section>
+
+          <section id="residual" class="section">
+            <h2>Temporal Residual Extraction</h2>
+            <p>
+              ResWorld 先把当前和历史 BEV features 都变换到当前帧 <code>B_t</code> 的坐标系下，
+              得到 <code>{B_t, B_{t-1}, ..., B_{t-k}}</code>。因为坐标系一致，同一空间位置的差异主要来自运动物体。
+            </p>
+            <p>
+              论文先用融合 BEV <code>B_fuse</code> 生成一个 spatial attention map，强调动态区域。
+              对每个 timestamp 的 BEV feature 提取 sparse scene queries：
+            </p>
+            <pre><code>S_i = AvgPool(SA(B_fuse) ⊙ B_i)</code></pre>
+            <p>
+              然后对相邻时刻的 scene queries 做差，得到 temporal residuals：
+            </p>
+            <pre><code>{R_t, R_{t-1}, ..., R_{t-k+1}}</code></pre>
+            <p>
+              直观理解：如果某个区域是静态建筑或道路，残差应该小；如果是移动汽车、行人或自车附近的动态障碍，残差会显著。
+            </p>
+          </section>
+
+          <section id="trworld" class="section">
+            <h2>TR-World：只建模动态残差</h2>
+            <figure>
+              <img src="./assets/resworld-figure-3-trworld.png" alt="Structure of Temporal Residual World Model" />
+              <figcaption>Figure 3：TR-World 对 temporal residual 做 self-attention 聚合，再通过 TokenFuser 和 fused BEV 生成 future BEV feature。</figcaption>
+            </figure>
+            <p>
+              TR-World 的输入不是完整 BEV，而是 temporal residuals。每个 residual 先经过 self-attention，
+              再跨时间累加得到动态对象的未来表示：
+            </p>
+            <pre><code>R_hat = Σ SelfAttention(R_i)</code></pre>
+            <p>
+              然后用 TokenFuser 把 <code>R_hat</code> 展开回 BEV feature，并加回静态背景 <code>B_fuse</code>：
+            </p>
+            <pre><code>B_future = TokenFuser(R_hat, B_fuse) + B_fuse</code></pre>
+            <p>
+              这个设计的含义是：静态部分由当前 BEV 继承，动态部分由 residual world model 更新。
+            </p>
+          </section>
+
+          <section id="fgtr" class="section">
+            <h2>FGTR：用 Future BEV 显式修正轨迹</h2>
+            <p>
+              Prior trajectory 先由 waypoint queries 和 fused scene queries 解码得到。FGTR 再把 prior trajectory 当作
+              future BEV 上的 reference points，让 waypoint queries 通过 deformable attention 读取未来场景信息：
+            </p>
+            <pre><code>W = DeformAttention(W, B_future, T_prior)
+T_final = MLP(W)</code></pre>
+            <p>
+              这样每个未来时间点的 waypoint query 可以检查：沿着 prior trajectory 走，附近是否有动态障碍、是否离开可行驶区域。
+              因而 FGTR 不是“间接提升表示”，而是把 future BEV 直接用到 trajectory refinement。
+            </p>
+            <div class="callout">
+              <strong>一个反直觉点</strong>
+              <p>
+                作者不使用真实未来 BEV 对 <code>B_future</code> 做 dense supervision。
+                理由是 t+1 的真实未来监督会让 future BEV 只对应某个单一时间戳，反而丢掉跨多个未来时刻的动态分布。
+                FGTR 的 reference points 给了 sparse spatio-temporal supervision，可以缓解 world model collapse。
+              </p>
+            </div>
+          </section>
+
+          <section id="experiments" class="section">
+            <h2>实验结果</h2>
+            <div class="metric-grid">
+              <div><span>nuScenes</span><strong>0.35</strong><p>ResWorld‡ Avg L2，低于 SSR∗‡ 的 0.39</p></div>
+              <div><span>nuScenes</span><strong>0.07</strong><p>ResWorld‡ Avg Collision Rate</p></div>
+              <div><span>nuScenes + ego</span><strong>0.30</strong><p>ResWorld♢‡ Avg L2</p></div>
+              <div><span>NAVSIM</span><strong>88.3</strong><p>ResWorld Det&Map PDMS</p></div>
+              <div><span>NAVSIM + history</span><strong>89.0</strong><p>ResWorld⋆ PDMS</p></div>
+            </div>
+
+            <h3>nuScenes open-loop planning</h3>
+            <table>
+              <thead>
+                <tr><th>方法</th><th>Auxiliary Task</th><th>Avg L2 ↓</th><th>Avg Collision ↓</th></tr>
+              </thead>
+              <tbody>
+                <tr><td>SSR∗‡</td><td>None</td><td>0.39</td><td>0.15</td></tr>
+                <tr><td>LAW‡</td><td>None</td><td>0.61</td><td>0.30</td></tr>
+                <tr><td>Drive-OccWorld‡</td><td>Occ</td><td>0.47</td><td>0.11</td></tr>
+                <tr><td>DiffusionDrive‡</td><td>Det&Track&Map&Motion</td><td>0.57</td><td>0.08</td></tr>
+                <tr class="highlight"><td>ResWorld‡</td><td>None</td><td>0.35</td><td>0.07</td></tr>
+                <tr class="highlight"><td>ResWorld♢‡</td><td>None + ego status</td><td>0.30</td><td>0.06</td></tr>
+              </tbody>
+            </table>
+
+            <h3>NAVSIM closed-loop planning</h3>
+            <table>
+              <thead>
+                <tr><th>方法</th><th>Auxiliary Task</th><th>NC ↑</th><th>DAC ↑</th><th>TTC ↑</th><th>EP ↑</th><th>PDMS ↑</th></tr>
+              </thead>
+              <tbody>
+                <tr><td>LAW</td><td>None</td><td>96.4</td><td>95.4</td><td>88.7</td><td>81.7</td><td>84.6</td></tr>
+                <tr><td>World4Drive</td><td>None</td><td>97.4</td><td>94.3</td><td>92.8</td><td>79.9</td><td>85.1</td></tr>
+                <tr><td>DiffusionDrive</td><td>Det&Map</td><td>98.2</td><td>96.2</td><td>94.7</td><td>82.2</td><td>88.1</td></tr>
+                <tr class="highlight"><td>ResWorld</td><td>Det&Map</td><td>98.2</td><td>96.4</td><td>98.9</td><td>82.5</td><td>88.3</td></tr>
+                <tr class="highlight"><td>ResWorld⋆</td><td>Det&Map + historical frame</td><td>98.9</td><td>96.5</td><td>95.6</td><td>83.1</td><td>89.0</td></tr>
+              </tbody>
+            </table>
+          </section>
+
+          <section id="ablations" class="section">
+            <h2>消融实验</h2>
+            <h3>TR-World 与 FGTR 是否有效</h3>
+            <table>
+              <thead>
+                <tr><th>Ego Status</th><th>TR-World</th><th>FGTR</th><th>Avg L2 ↓</th><th>Avg Col. ↓</th></tr>
+              </thead>
+              <tbody>
+                <tr><td>否</td><td>否</td><td>否</td><td>0.71</td><td>0.31</td></tr>
+                <tr class="highlight"><td>否</td><td>是</td><td>是</td><td>0.65</td><td>0.23</td></tr>
+                <tr><td>是</td><td>否</td><td>否</td><td>0.65</td><td>0.28</td></tr>
+                <tr><td>是</td><td>是</td><td>否</td><td>0.61</td><td>0.25</td></tr>
+                <tr><td>是</td><td>否</td><td>是</td><td>0.61</td><td>0.22</td></tr>
+                <tr class="highlight"><td>是</td><td>是</td><td>是</td><td>0.59</td><td>0.17</td></tr>
+              </tbody>
+            </table>
+
+            <h3>Normal WM vs TR-World，以及是否需要 Future Supervision</h3>
+            <table>
+              <thead>
+                <tr><th>World Model</th><th>Future Supervision</th><th>Avg L2 ↓</th><th>Avg Col. ↓</th><th>解读</th></tr>
+              </thead>
+              <tbody>
+                <tr><td>Normal World Model</td><td>是</td><td>0.61</td><td>0.23</td><td>预测完整场景，静态建模冗余</td></tr>
+                <tr><td>Normal World Model</td><td>否</td><td>0.61</td><td>0.21</td><td>future supervision 影响有限</td></tr>
+                <tr><td>TR-World</td><td>是</td><td>0.61</td><td>0.21</td><td>t+1 dense supervision 反而限制时序分布</td></tr>
+                <tr class="highlight"><td>TR-World</td><td>否</td><td>0.59</td><td>0.17</td><td>依靠 FGTR sparse spatio-temporal supervision 最好</td></tr>
+              </tbody>
+            </table>
+
+            <figure>
+              <img src="./assets/resworld-figure-5-qualitative.png" alt="ResWorld planning qualitative results" />
+              <figcaption>
+                Figure 5：ResWorld 相比 SSR 能更好避开车辆或路沿，虚线圈标出潜在碰撞区域。
+              </figcaption>
+            </figure>
+          </section>
+
+          <section id="limits" class="section">
+            <h2>局限与疑问</h2>
+            <ul>
+              <li><strong>潜在动态对象难处理：</strong>论文自己承认，TR-World 对已经有运动的动态对象敏感，但对潜在动态对象，如行人、停靠车辆，不能充分通过 temporal residual 捕获。</li>
+              <li><strong>依赖高质量 BEV 对齐：</strong>temporal residual 成立的前提是不同时间 BEV 已经被准确对齐到当前坐标系，因此底层 BEV 几何质量很关键。</li>
+              <li><strong>future BEV 无 dense GT supervision：</strong>这是创新点也是风险点。模型靠 FGTR 的稀疏监督避免 collapse，但 future BEV 表示到底学到什么仍然不完全可解释。</li>
+              <li><strong>NAVSIM 对历史帧设置不完全统一：</strong>论文为公平比较做了 agent query 替代 temporal residual 的设置；完整 ResWorld⋆ 使用 historical frame，比较时要说明配置差异。</li>
+            </ul>
+          </section>
+
+          <section id="takeaways" class="section">
+            <h2>值得学习的地方</h2>
+            <ul>
+              <li>不要让 world model 盲目预测整个未来，先问“哪些未来信息对规划真正缺失”。</li>
+              <li>静态背景可以直接继承，动态变化才是短时规划最需要建模的部分。</li>
+              <li>future representation 最好直接参与 trajectory refinement，而不是只做辅助 loss。</li>
+              <li>防止 world model collapse 不一定要 dense future GT，轨迹 reference points 也可以形成稀疏时空监督。</li>
+            </ul>
+          </section>
+        </article>
+      </div>
+    </main>
+  </body>
+</html>
