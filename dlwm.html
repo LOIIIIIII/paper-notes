@@ -1,0 +1,332 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>DLWM 论文精读笔记</title>
+    <meta
+      name="description"
+      content="DLWM: Dual Latent World Models enable Holistic Gaussian-centric Pre-training in Autonomous Driving 中文论文精读笔记。"
+    />
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body class="theme-indigo">
+    <header class="site-header">
+      <nav class="nav">
+        <a class="brand" href="./dlwm.html">DLWM 笔记</a>
+        <div class="nav-links">
+          <a href="./index.html">LVDrive</a>
+          <a href="./world4drive.html">World4Drive</a>
+          <a href="./autovla.html">AutoVLA</a>
+          <a href="./epona.html">Epona</a>
+          <a href="./gem.html">GEM</a>
+          <a href="#innovation">创新</a>
+          <a href="#method">方法</a>
+          <a href="#experiments">实验</a>
+          <a href="#report">组会讲法</a>
+        </div>
+      </nav>
+    </header>
+
+    <main>
+      <section class="hero">
+        <div class="hero-inner">
+          <p class="eyebrow">Gaussian-centric Pre-training / Latent World Model</p>
+          <h1>DLWM 论文精读笔记</h1>
+          <p class="hero-summary">
+            DLWM 把自动驾驶中的 3D Gaussian 表征预训练做成一个两阶段框架：
+            先用 depth/semantic rendering 学好几何语义，再用两个任务导向的 latent world models
+            分别服务 occupancy perception/forecasting 和 motion planning。
+          </p>
+          <div class="meta-grid">
+            <div>
+              <span>论文标题</span>
+              <strong>DLWM: Dual Latent World Models enable Holistic Gaussian-centric Pre-training in Autonomous Driving</strong>
+            </div>
+            <div>
+              <span>来源与对象</span>
+              <strong>arXiv:2604.00969v1；本笔记基于本地 PDF 阅读与论文表格整理</strong>
+            </div>
+            <div>
+              <span>关键词</span>
+              <strong>3D Gaussian · BEV latent · Gaussian Flow · Ego Planning · Self-supervised Pre-training</strong>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <div class="layout">
+        <aside class="toc" aria-label="目录">
+          <a href="#summary">一句话</a>
+          <a href="#problem">问题</a>
+          <a href="#innovation">创新点</a>
+          <a href="#method">方法总览</a>
+          <a href="#stage1">Stage 1</a>
+          <a href="#flow">Gaussian Flow</a>
+          <a href="#planning">Ego Planning</a>
+          <a href="#experiments">实验</a>
+          <a href="#ablations">消融</a>
+          <a href="#limits">局限</a>
+          <a href="#report">组会讲法</a>
+        </aside>
+
+        <article class="article">
+          <section id="summary" class="section lead-section">
+            <h2>一句话总结</h2>
+            <p class="lead">
+              DLWM 的核心贡献是：为 Gaussian-centric 自动驾驶模型设计一个 holistic self-supervised pre-training
+              范式，用 Stage 1 学 3D Gaussian 几何语义，用 Stage 2 的 dual latent world models 学任务相关的时序表示。
+            </p>
+          </section>
+
+          <section id="problem" class="section">
+            <h2>论文要解决的问题</h2>
+            <p>
+              视觉自动驾驶中的 scene representation 需要同时满足表达力、效率和时序一致性。Voxel/BEV 表征比较直观，
+              但要么计算重，要么压扁高度信息；sparse query 方法更高效，但场景几何和语义不够完整。
+              3D Gaussian-centric representation 提供了一个折中：用稀疏 3D semantic Gaussians 表示场景，既保留 3D 结构，又避免 dense voxel 的高成本。
+            </p>
+            <p>
+              但问题是，Gaussian-centric 模型还缺少一个能覆盖 perception、forecasting、planning 的自监督预训练框架。
+              更麻烦的是，不同帧的 Gaussian queries 没有天然一一对应关系，直接监督 query feature 会受到 permutation equivalence 的影响。
+              DLWM 因此选择把 3D Gaussians rasterize 成 BEV latent，用它作为跨帧时序监督的中间表示。
+            </p>
+            <figure>
+              <img src="./assets/dlwm-figure-1-overview.png" alt="DLWM overview and performance gains" />
+              <figcaption>
+                Figure 1：DLWM 用 dual latent world models 做 Gaussian-centric pre-training，并在 perception、forecasting、planning 三类任务上提升。
+              </figcaption>
+            </figure>
+          </section>
+
+          <section id="innovation" class="section">
+            <h2>创新点怎么理解</h2>
+            <div class="innovation-grid">
+              <div>
+                <span>Innovation 1</span>
+                <h3>Holistic Gaussian-centric pre-training</h3>
+                <p>
+                  不是只为 occupancy 或 planning 单任务预训练，而是把 3D Gaussian 表征作为统一底座，
+                  再通过不同 latent world model 适配下游任务。
+                </p>
+              </div>
+              <div>
+                <span>Innovation 2</span>
+                <h3>Rendering-based Stage 1</h3>
+                <p>
+                  用 depth 和 semantic rendering 训练 Gaussian representation。监督来自 LiDAR depth、
+                  Metric3D pseudo-depth 和 Grounded-SAM semantic pseudo labels，不依赖人工 3D occupancy 标注。
+                </p>
+              </div>
+              <div>
+                <span>Innovation 3</span>
+                <h3>Gaussian-flow-guided latent world model</h3>
+                <p>
+                  对每个 Gaussian 预测动态位移，再结合 ego motion 对齐到下一帧，学习 spatiotemporal Gaussian features，
+                  主要提升 3D perception 和 4D forecasting。
+                </p>
+              </div>
+              <div>
+                <span>Innovation 4</span>
+                <h3>Ego-planning-guided latent world model</h3>
+                <p>
+                  用预测的 ego trajectory 调制 future scene latent，让未来场景预测和规划目标绑定，
+                  主要服务 motion planning。
+                </p>
+              </div>
+            </div>
+            <div class="callout">
+              <strong>最值得讲的点</strong>
+              <p>
+                论文没有把所有任务硬塞进一个 world model，而是用 dual 设计解耦 Gaussian flow 和 ego planning。
+                附录消融显示 Dual 比 Unified 更好，这个点比单纯报 SOTA 更有学习价值。
+              </p>
+            </div>
+          </section>
+
+          <section id="method" class="section">
+            <h2>方法总览</h2>
+            <figure>
+              <img src="./assets/dlwm-figure-2-pipeline.png" alt="DLWM overall pipeline" />
+              <figcaption>
+                Figure 2：DLWM 两阶段框架。Stage 1 通过重建 depth/semantic 学 3D Gaussian；Stage 2 分别训练 Gaussian-flow-guided 和 ego-planning-guided latent world model。
+              </figcaption>
+            </figure>
+            <pre><code>Multi-view videos
+    ↓
+Stage 1: Gaussian perception + rendering reconstruction
+    ↓
+Pre-trained Gaussian perception weights
+    ↓
+Stage 2-A: Gaussian-flow-guided latent prediction
+    → perception / 4D forecasting
+
+Stage 2-B: ego-planning-guided latent prediction
+    → motion planning</code></pre>
+          </section>
+
+          <section id="stage1" class="section">
+            <h2>Stage 1：Gaussian Representation Learning</h2>
+            <p>
+              Stage 1 的目标是让 Gaussian queries 学到可渲染的 3D 几何和语义。多视角图像经过 image encoder 和 FPN 后，
+              Gaussian perception module 输出一组 3D semantic Gaussians。每个 Gaussian 包含中心 <code>μ</code>、协方差
+              <code>Σ</code>、透明度 <code>α</code> 和 semantic logits 等属性。
+            </p>
+            <p>
+              训练时，模型把这些 Gaussians 渲染成 depth map 和 semantic map。深度监督来自两部分：
+              LiDAR sparse depth 和 Metric3D pseudo dense depth；语义监督来自 Grounded-SAM 生成的 pseudo semantic labels。
+            </p>
+            <pre><code>L_rec = ω1 L_d + ω2 L_pd + ω3 L_sem
+ω1 = 1.0, ω2 = 0.05, ω3 = 1.0</code></pre>
+            <p>
+              这一步的本质是：不用人工 occupancy label，也能通过可微渲染逼迫 Gaussian 表征具备几何和语义可解释性。
+            </p>
+          </section>
+
+          <section id="flow" class="section">
+            <h2>Stage 2-A：Gaussian-flow-guided Latent World Model</h2>
+            <p>
+              这个分支服务 3D occupancy perception 和 4D occupancy forecasting。它预测每个 Gaussian 的 dynamic displacement
+              <code>Δμ</code>，再结合 ego motion，把当前帧 Gaussian 传播到下一帧：
+            </p>
+            <pre><code>μ_{t+1} = T_ego^{t→t+1}( μ_t + Δμ_t )</code></pre>
+            <p>
+              传播后的 3D Gaussians 会被 rasterize 到 BEV plane，得到预测的 future BEV latent
+              <code>B̂_{t+1}</code>。监督信号来自下一帧真实多视角图像经过 frozen Gaussian perception module 得到的 BEV latent
+              <code>B_{t+1}</code>：
+            </p>
+            <pre><code>L_bev = || B̂_{t+1} - B_{t+1} ||_2</code></pre>
+            <figure>
+              <img src="./assets/dlwm-figure-3-forecasting.png" alt="DLWM 4D occupancy forecasting stream" />
+              <figcaption>
+                Figure 3：4D occupancy forecasting 的 stream 机制：对齐静态场景、移动动态 Gaussian、用 random Gaussians 补全新区域，再自回归预测未来 occupancy。
+              </figcaption>
+            </figure>
+          </section>
+
+          <section id="planning" class="section">
+            <h2>Stage 2-B：Ego-planning-guided Latent World Model</h2>
+            <p>
+              另一个分支专门服务 motion planning。它先把当前 3D Gaussians rasterize 成 dense latent BEV feature，
+              再抽取 scene queries。Waypoint queries 通过 cross-attention 读取 scene queries，输出未来 ego trajectory。
+            </p>
+            <p>
+              随后，模型用预测轨迹 <code>T̂</code> 通过 Motion-Aware Layer Normalization 调制 scene queries，
+              预测下一帧 future scene queries，并融合当前 BEV latent 得到 <code>B̂_{t+1}</code>。
+            </p>
+            <pre><code>L_reg = || T̂ - T ||_1
+L_plan = L_reg + L_bev</code></pre>
+            <p>
+              这个设计的动机是：规划真正关心的未来场景不是无条件未来，而是“自车按照某条轨迹走以后会遇到的未来”。
+              所以它用 ego trajectory 来 condition future latent prediction。
+            </p>
+          </section>
+
+          <section id="experiments" class="section">
+            <h2>实验结论</h2>
+            <div class="metric-grid">
+              <div><span>3D Perception</span><strong>+1.02</strong><p>mIoU 提升，20.83 → 21.85</p></div>
+              <div><span>3D Perception</span><strong>+2.84</strong><p>IoU 提升，31.77 → 34.61</p></div>
+              <div><span>4D Forecasting</span><strong>+2.68</strong><p>Avg mIoU 提升，15.09 → 17.77</p></div>
+              <div><span>4D Forecasting</span><strong>+4.95</strong><p>Avg IoU 提升，25.65 → 30.60</p></div>
+              <div><span>Planning</span><strong>-16%</strong><p>Avg L2 下降，0.55m → 0.46m</p></div>
+            </div>
+
+            <h3>主结果概览</h3>
+            <table>
+              <thead>
+                <tr><th>任务</th><th>Baseline</th><th>DLWM</th><th>提升</th></tr>
+              </thead>
+              <tbody>
+                <tr><td>3D occupancy perception</td><td>IoU 31.77 / mIoU 20.83</td><td>IoU 34.61 / mIoU 21.85</td><td>+2.84 IoU / +1.02 mIoU</td></tr>
+                <tr><td>4D occupancy forecasting</td><td>Avg IoU 25.65 / Avg mIoU 15.09</td><td>Avg IoU 30.60 / Avg mIoU 17.77</td><td>+4.95 IoU / +2.68 mIoU</td></tr>
+                <tr><td>Motion planning</td><td>Avg L2 0.55m / Col. 0.24%</td><td>Avg L2 0.46m / Col. 0.19%</td><td>L2 约下降 16%，碰撞率下降</td></tr>
+              </tbody>
+            </table>
+            <p>
+              需要谨慎表述：论文在 SurroundOcc-nuScenes 和 nuScenes validation 上展示了强结果，
+              但不能泛化说“解决了所有 Gaussian-centric 预训练问题”。它的证据主要来自这三类下游任务。
+            </p>
+          </section>
+
+          <section id="ablations" class="section">
+            <h2>消融实验怎么读</h2>
+            <h3>Stage 1 渲染监督 + Gaussian Flow</h3>
+            <table>
+              <thead>
+                <tr><th>设置</th><th>mIoU ↑</th><th>IoU ↑</th><th>理解</th></tr>
+              </thead>
+              <tbody>
+                <tr><td>LiDAR sparse depth</td><td>18.40</td><td>29.83</td><td>基础几何监督</td></tr>
+                <tr><td>+ dense pseudo-depth</td><td>18.74</td><td>30.05</td><td>稠密几何信号有帮助</td></tr>
+                <tr><td>+ semantic supervision</td><td>18.99</td><td>30.23</td><td>语义渲染进一步提升</td></tr>
+                <tr class="highlight"><td>+ Gaussian Flow latent WM</td><td>19.30</td><td>30.56</td><td>时序 latent 预测继续增益</td></tr>
+              </tbody>
+            </table>
+
+            <h3>Ego Planning 分支</h3>
+            <table>
+              <thead>
+                <tr><th>设置</th><th>Avg L2 ↓</th><th>Avg Col. ↓</th><th>理解</th></tr>
+              </thead>
+              <tbody>
+                <tr><td>Raw Gaussian features</td><td>0.55</td><td>0.24</td><td>基础 planning baseline</td></tr>
+                <tr><td>+ Latent BEV</td><td>0.52</td><td>0.22</td><td>BEV latent 比 raw sparse features 更适合规划</td></tr>
+                <tr><td>+ BEV Forecasting</td><td>0.50</td><td>0.20</td><td>未来 latent 预测帮助 planning</td></tr>
+                <tr class="highlight"><td>+ Stage-1 Pretrain</td><td>0.46</td><td>0.19</td><td>几何语义初始化带来最大收益</td></tr>
+              </tbody>
+            </table>
+
+            <h3>Dual vs Unified</h3>
+            <table>
+              <thead>
+                <tr><th>设计</th><th>mIoU ↑</th><th>L2 ↓</th><th>Col. ↓</th></tr>
+              </thead>
+              <tbody>
+                <tr><td>Unified</td><td>18.9</td><td>0.58</td><td>0.22</td></tr>
+                <tr class="highlight"><td>Dual</td><td>19.3</td><td>0.46</td><td>0.19</td></tr>
+              </tbody>
+            </table>
+            <p>
+              这个消融最能支持论文标题里的 “Dual”。作者认为 Gaussian flow 学习和 ego planning 学习目标不同，
+              强行统一会让 planning 分支承担没有显式监督的 flow 学习负担，反而增加复杂度。
+            </p>
+          </section>
+
+          <section id="limits" class="section">
+            <h2>局限与疑问</h2>
+            <ul>
+              <li><strong>工程链条较长：</strong>依赖 Metric3D pseudo-depth、Grounded-SAM pseudo semantics、Gaussian perception、BEV rasterization 等多个组件。</li>
+              <li><strong>Dual 不是完全统一：</strong>论文叫 holistic，但两个 latent world model 是分开训练的，说明 perception/forecasting 与 planning 目标仍然不容易统一。</li>
+              <li><strong>BEV latent 是折中：</strong>作者强调 BEV rasterization 只用于 temporal supervision，不是最终 3D 表征；但这仍引入了 BEV 中间表示的设计选择。</li>
+              <li><strong>未来帧数有限：</strong>附录里 N=1 最好，更多未来帧反而下降，说明长时 future prediction 仍然困难。</li>
+              <li><strong>复现成本不低：</strong>25,600 Gaussians、两阶段预训练、20 epoch fine-tuning，对普通组来说不是轻量级实验。</li>
+            </ul>
+          </section>
+
+          <section id="report" class="section">
+            <h2>组会怎么短讲</h2>
+            <p>
+              如果只有 3-5 分钟，不建议从 3DGS 公式讲起。建议按“问题-方法-证据-评价”讲：
+            </p>
+            <ol>
+              <li><strong>问题：</strong>Gaussian-centric 表征高效且保留 3D 几何，但缺少服务 perception/forecasting/planning 的完整自监督预训练。</li>
+              <li><strong>核心方法：</strong>Stage 1 用 depth/semantic rendering 学 Gaussian；Stage 2 用两个 latent world models 分别学习 Gaussian flow 和 ego-planning-conditioned future latent。</li>
+              <li><strong>关键证据：</strong>3D perception +1.02 mIoU，4D forecasting +2.68 mIoU，planning L2 从 0.55m 降到 0.46m。</li>
+              <li><strong>个人理解：</strong>最重要的不是 SOTA，而是 Dual 解耦。不同下游任务需要不同 temporal representation，统一 world model 未必更好。</li>
+              <li><strong>局限：</strong>pipeline 复杂、依赖 pseudo labels、更多未来帧预测下降，长时建模仍有挑战。</li>
+            </ol>
+            <div class="callout">
+              <strong>一分钟版本</strong>
+              <p>
+                DLWM 给 Gaussian-centric 自动驾驶模型做了一个两阶段自监督预训练：先通过 depth/semantic rendering 学 3D Gaussian 几何语义，
+                再用 dual latent world models 分别面向 perception/forecasting 和 planning 学时序 latent。
+                实验上三类任务都提升，最值得注意的是 Dual 比 Unified 更好，说明 Gaussian flow 和 ego planning 的学习目标不宜强行合并。
+              </p>
+            </div>
+          </section>
+        </article>
+      </div>
+    </main>
+  </body>
+</html>

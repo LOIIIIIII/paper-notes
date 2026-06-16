@@ -12,6 +12,7 @@
 | World4Drive 意图感知 latent world model 论文笔记 | [GitHub Pages](https://loiiiiiii.github.io/paper-notes/world4drive.html) | [论文笔记 Markdown](./papers/World4Drive/World4Drive论文笔记.md), [HTML 页面](./world4drive.html) |
 | AutoVLA 动作码本与自适应推理论文笔记 | [GitHub Pages](https://loiiiiiii.github.io/paper-notes/autovla.html) | [论文笔记 Markdown](./papers/AutoVLA/AutoVLA论文笔记.md), [HTML 页面](./autovla.html) |
 | Epona 自回归扩散 world model 方法笔记 | [GitHub Pages](https://loiiiiiii.github.io/paper-notes/epona.html) | [论文笔记 Markdown](./papers/Epona/Epona方法精读笔记.md), [HTML 页面](./epona.html) |
+| DLWM Gaussian-centric 预训练论文笔记 | [GitHub Pages](https://loiiiiiii.github.io/paper-notes/dlwm.html) | [论文笔记 Markdown](./papers/DLWM/DLWM论文笔记.md), [HTML 页面](./dlwm.html) |
 | MapAgent2CARLA 多智能体地图生成框架 | [GitHub Pages](https://loiiiiiii.github.io/paper-notes/mapagent2carla.html) | [框架 Markdown](./docs/mapagent2carla-framework.md), [博客 Markdown](./_posts/2026-06-09-mapagent2carla.md), [HTML 页面](./mapagent2carla.html) |
 
 > GitHub Pages 更新可能有几十秒到几分钟延迟。如果在线页面暂时没刷新，可以先看仓库里的 HTML / Markdown 源文件。
@@ -29,3 +30,5 @@ World4Drive 的核心思想是：让 latent world model 针对不同驾驶意图
 AutoVLA 的核心思想是：用 physical action codebook 把连续轨迹变成 VLM 可生成的 action tokens，并通过 SFT/RFT 学会快慢思考和更高效的轨迹生成。
 
 Epona 的核心思想是：用 continuous latent autoregression 和 diffusion generation 结合长时世界建模、动作条件视频生成与实时轨迹规划，并通过 chain-of-forward 训练缓解长时漂移。
+
+DLWM 的核心思想是：用两阶段 Gaussian-centric 自监督预训练学习 3D Gaussian 几何语义和任务导向时序 latent，并用 dual latent world models 分别提升 occupancy perception/forecasting 与 motion planning。
