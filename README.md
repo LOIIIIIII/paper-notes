@@ -16,6 +16,7 @@
 | LeWorldModel 端到端 JEPA 潜空间世界模型笔记 | [GitHub Pages](https://loiiiiiii.github.io/paper-notes/leworldmodel.html) | [论文笔记 Markdown](./papers/LeWorldModel/LeWorldModel论文笔记.md), [HTML 页面](./leworldmodel.html) |
 | ResWorld Temporal Residual World Model 论文笔记 | [GitHub Pages](https://loiiiiiii.github.io/paper-notes/resworld.html) | [论文笔记 Markdown](./papers/ResWorld/ResWorld论文笔记.md), [HTML 页面](./resworld.html) |
 | CoWorld-VLA 多专家 Latent CoT 论文笔记 | [GitHub Pages](https://loiiiiiii.github.io/paper-notes/coworld-vla.html) | [论文笔记 Markdown](./papers/CoWorld-VLA/CoWorld-VLA论文笔记.md), [HTML 页面](./coworld-vla.html) |
+| UniTrans 异构协同感知特征翻译论文笔记 | [GitHub Pages](https://loiiiiiii.github.io/paper-notes/unitrans.html) | [论文笔记 Markdown](./papers/UniTrans/UniTrans论文笔记.md), [HTML 页面](./unitrans.html) |
 | MapAgent2CARLA 多智能体地图生成框架 | [GitHub Pages](https://loiiiiiii.github.io/paper-notes/mapagent2carla.html) | [框架 Markdown](./docs/mapagent2carla-framework.md), [博客 Markdown](./_posts/2026-06-09-mapagent2carla.md), [HTML 页面](./mapagent2carla.html) |
 
 > GitHub Pages 更新可能有几十秒到几分钟延迟。如果在线页面暂时没刷新，可以先看仓库里的 HTML / Markdown 源文件。
@@ -41,3 +42,5 @@ LeWorldModel 的核心思想是：用 next-embedding prediction 加 SIGReg 高�
 ResWorld 的核心思想是：用 temporal residual 让 world model 聚焦动态对象，避免冗余静态建模，并通过 Future-Guided Trajectory Refinement 让未来 BEV 特征显式修正轨迹。
 
 CoWorld-VLA 的核心思想是：把 VLA 的中间推理从文本 CoT 改成 semantic、geometry、dynamic、trajectory 四类 multi-expert latent CoT，并用 HMEF diffusion planner 将这些世界知识显式融合进轨迹生成。
+
+UniTrans 的核心思想是：先学习 modality-intrinsic latent space 描述不同中间特征的模态风格，再根据 source-target 模态关系动态组合 Translator Parameter Bank，实现无需重训的 zero-shot any-to-any feature translation。

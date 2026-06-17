@@ -1,0 +1,390 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>UniTrans 论文精读笔记</title>
+    <meta
+      name="description"
+      content="One Model to Translate Them All: Universal Any-to-Any Translation for Heterogeneous Collaborative Perception 中文论文精读笔记。"
+    />
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body class="theme-teal">
+    <header class="site-header">
+      <nav class="nav">
+        <a class="brand" href="./unitrans.html">UniTrans 笔记</a>
+        <div class="nav-links">
+          <a href="./index.html">LVDrive</a>
+          <a href="./coworld-vla.html">CoWorld-VLA</a>
+          <a href="./resworld.html">ResWorld</a>
+          <a href="./epona.html">Epona</a>
+          <a href="#innovation">创新</a>
+          <a href="#method">方法</a>
+          <a href="#experiments">实验</a>
+          <a href="#qa">Q&A</a>
+        </div>
+      </nav>
+    </header>
+
+    <main>
+      <section class="hero">
+        <div class="hero-inner">
+          <p class="eyebrow">Heterogeneous Collaborative Perception / Feature Translation</p>
+          <h1>UniTrans 论文精读笔记</h1>
+          <p class="hero-summary">
+            UniTrans 想训练一个“通用特征翻译器”：不同车、路侧设备或感知 backbone 产生的中间 BEV feature
+            不再为每个 source-target pair 单独训练 adapter，而是在推理时根据模态关系现场实例化 translator。
+          </p>
+          <div class="meta-grid">
+            <div>
+              <span>论文标题</span>
+              <strong>One Model to Translate Them All: Universal Any-to-Any Translation for Heterogeneous Collaborative Perception</strong>
+            </div>
+            <div>
+              <span>论文信息</span>
+              <strong>ICML 2026 / arXiv:2605.17907v1；代码 github.com/CheeryLeeyy/UniTrans</strong>
+            </div>
+            <div>
+              <span>关键词</span>
+              <strong>MIE · MMR · TPB · Any-to-Any Translation · Zero-shot Heterogeneous Collaboration</strong>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <div class="layout">
+        <aside class="toc" aria-label="目录">
+          <a href="#summary">一句话</a>
+          <a href="#problem">问题</a>
+          <a href="#innovation">创新点</a>
+          <a href="#method">方法总览</a>
+          <a href="#stage1">MIE 训练</a>
+          <a href="#stage2">Translator 学习</a>
+          <a href="#inference">推理</a>
+          <a href="#experiments">实验</a>
+          <a href="#ablations">消融</a>
+          <a href="#qa">Q&A</a>
+          <a href="#relation">研究启发</a>
+          <a href="#limits">局限</a>
+        </aside>
+
+        <article class="article">
+          <section id="summary" class="section lead-section">
+            <h2>一句话总结</h2>
+            <p class="lead">
+              UniTrans 先学习一个 modality-intrinsic latent space 来描述不同中间特征的“模态风格”，
+              再用 Modality Mapping Router 根据 source-target 关系组合 Translator Parameter Bank，
+              从而在无需重新训练的情况下完成 zero-shot any-to-any feature translation。
+            </p>
+          </section>
+
+          <section id="problem" class="section">
+            <h2>论文要解决的问题</h2>
+            <p>
+              协同感知常用 intermediate fusion：不同车辆或路侧单元共享 BEV intermediate features，
+              从而缓解遮挡和远距离感知不足。但现实中 agent 的传感器和感知模型很可能不同，
+              导致中间特征分布不一致，ego 车的 fusion module 直接融合会误读这些特征。
+            </p>
+            <ul>
+              <li><strong>One-to-one adapter：</strong>每个 source-target 模态映射训练一个 adapter，新模态出现会导致组合爆炸。</li>
+              <li><strong>Protocol-space 方法：</strong>把 feature 先映射到统一协议空间，但协议空间不一定适合未来新模态。</li>
+              <li><strong>跨厂商训练困难：</strong>真实部署中频繁联合训练会受隐私、数据和模型封闭限制。</li>
+              <li><strong>核心问题：</strong>能否训练一次，推理时对任意新异构 agent 直接生成合适的 feature translator？</li>
+            </ul>
+            <figure>
+              <img src="./assets/unitrans-figure-1-paradigms.png" alt="UniTrans paradigms comparison" />
+              <figcaption>
+                Figure 1：UniTrans 相比 one-to-one adaptation 和 protocol-space adaptation，
+                目标是根据动态 source-target modality mapping 实例化 translator，实现 any-to-any translation。
+              </figcaption>
+            </figure>
+          </section>
+
+          <section id="innovation" class="section">
+            <h2>创新点怎么理解</h2>
+            <div class="innovation-grid">
+              <div>
+                <span>Innovation 1</span>
+                <h3>Modality-Intrinsic Latent Space</h3>
+                <p>
+                  不直接在高维 BEV feature space 中估计映射，而是用 MIE 抽取 scene-invariant、
+                  modality-specific intrinsic code，让新模态可以在低维空间中定位。
+                </p>
+              </div>
+              <div>
+                <span>Innovation 2</span>
+                <h3>Mapping-conditioned Instantiation</h3>
+                <p>
+                  MMR 根据 <code>z_source</code> 和 <code>z_target</code> 输出参数组合权重，
+                  让 translator 的实例化由 source-target 模态关系决定。
+                </p>
+              </div>
+              <div>
+                <span>Innovation 3</span>
+                <h3>Translator Parameter Bank</h3>
+                <p>
+                  TPB 存储可复用 expert parameters。推理时组合的是参数而不是多个 expert 输出，
+                  因此只需一次 translator forward，比 Classic MoE 更轻。
+                </p>
+              </div>
+              <div>
+                <span>Innovation 4</span>
+                <h3>Zero-shot Any-to-Any Setting</h3>
+                <p>
+                  论文把部分 modality 完全留到推理时，测试新 agent 不经额外训练进入协同感知系统的能力。
+                </p>
+              </div>
+            </div>
+          </section>
+
+          <section id="method" class="section">
+            <h2>方法总览</h2>
+            <figure>
+              <img src="./assets/unitrans-figure-2-architecture.png" alt="UniTrans overall architecture" />
+              <figcaption>
+                Figure 2：Stage 1 训练 MIE 的模态内在空间；Stage 2 学习 MMR 和 TPB；
+                推理时对新异构 agent 进行 on-the-fly translator instantiation。
+              </figcaption>
+            </figure>
+            <pre><code>Stage 1:
+intermediate feature F -> MIE -> intrinsic code z
+same modality pull together, different modalities push apart
+
+Stage 2:
+z_j = MIE(F_j), z_i = MIE(F_i)
+α_{j→i} = MMR(z_j, z_i)
+φ_{j→i} = Θ0 + Σ α_k Θk
+F_{j→i} = T_{φ_{j→i}}(F_j)
+
+Inference:
+neighbor feature -> UniTrans -> ego-consistent feature
+ego feature + translated neighbor features -> Fusion Network -> Task Head</code></pre>
+          </section>
+
+          <section id="stage1" class="section">
+            <h2>Stage 1：MIE 的 Modality-Intrinsic Representation Pretraining</h2>
+            <p>
+              MIE 的目标是从中间特征中抽取“模态风格”而不是具体场景内容。它会使用 channel mean、
+              channel std、global response 和 Gram matrix / channel correlation 等统计信息，
+              这些特征类似风格迁移里的 style descriptors，能反映不同传感器和 backbone 的 feature style。
+            </p>
+            <pre><code>z = MIE(F), z ∈ R^d</code></pre>
+            <p>第一阶段的损失为：</p>
+            <pre><code>L_stage1 = L_IC + λ_IS L_IS</code></pre>
+
+            <h3>L_IC：Intrinsic Contrastive Loss</h3>
+            <p>
+              对一个 batch 内的 intrinsic codes，和 anchor <code>z_a</code> 同一 modality 的样本是 positive，
+              不同 modality 的样本是 negative。InfoNCE-style loss 让同模态 code 靠近、异模态 code 远离。
+            </p>
+            <pre><code>L_IC = Σ_a -log
+       [Σ_{p∈P(a)} exp(sim(z_a, z_p)/τ)]
+       /
+       [Σ_{b≠a} exp(sim(z_a, z_b)/τ)]</code></pre>
+            <p>
+              图里的 <code>+Pull</code> 和 <code>-Push</code> 就是在表达这个损失：
+              同一个模态的特征风格聚成 cluster，不同模态形成不同 anchor 区域。
+            </p>
+
+            <h3>L_IS：Surrogate Modality Classification Loss</h3>
+            <p>
+              <code>L_IS</code> 是辅助模态分类损失。在 intrinsic code 后接一个轻量 MLP 分类头，
+              直接预测当前 feature 来自哪种 modality：
+            </p>
+            <pre><code>p_hat(m | z) = softmax(q(z))
+L_IS = - E_{(z,m)} log p_hat(m | z)</code></pre>
+            <p>
+              如果说 <code>L_IC</code> 负责整理 latent space 的几何结构，
+              那么 <code>L_IS</code> 负责让每个 code 具有清晰的 modality identity。
+              两者共同保证 MMR 后续能稳定判断 source-target mapping。
+            </p>
+          </section>
+
+          <section id="stage2" class="section">
+            <h2>Stage 2：Translator Expert Learning</h2>
+            <p>
+              Stage 2 冻结或使用 Stage 1 得到的 MIE，为 source feature 和 target feature 提取 intrinsic code：
+            </p>
+            <pre><code>z_j = MIE(F_j)
+z_i = MIE(F_i)
+δ_{j→i} = g(z_j, z_i)
+α_{j→i} = softmax(h(δ_{j→i}))</code></pre>
+            <p>
+              TPB 存储 <code>K</code> 个 translator expert parameters 和一个 shared expert <code>Θ0</code>。
+              MMR 输出的 <code>α</code> 用于组合这些参数：
+            </p>
+            <pre><code>φ_{j→i} = Θ0 + Σ_k α_{j→i}^{(k)} Θ^{(k)}
+F_{j→i} = T_{φ_{j→i}}(F_j)</code></pre>
+            <p>
+              这和普通 MoE 的差异很关键：普通 MoE 通常执行多个专家再融合输出；
+              UniTrans 是先组合专家参数生成一个 translator，再只执行一次 forward。
+            </p>
+            <div class="callout">
+              <strong>Stage 2 的监督</strong>
+              <p>
+                训练包含下游 task loss、feature distillation loss、routing contrastive loss 和 router regularization。
+                其中 <code>L_feat</code> 让翻译后的 feature 接近 ego encoder 对同一 observation 产生的 teacher ego-domain feature，
+                是消融中最关键的 Stage 2 监督。
+              </p>
+            </div>
+          </section>
+
+          <section id="inference" class="section">
+            <h2>Inference：On-the-fly Translator Instantiation</h2>
+            <p>
+              推理时，新异构 agent 的 feature 经过 MIE 得到 intrinsic code；MMR 根据它与 ego code 的关系输出参数组合权重；
+              TPB 被组合成当前映射专用 translator。整个过程不需要重新训练。
+            </p>
+            <pre><code>Agent j sends F_j
+ego has F_i
+UniTrans estimates j→i mapping
+instantiate T_{φ_{j→i}}
+translate F_j into F_{j→i}
+fusion: F_i + F_{j→i} + ... -> perception result</code></pre>
+          </section>
+
+          <section id="experiments" class="section">
+            <h2>实验结果</h2>
+            <p>
+              论文在 OPV2V-H 和 DAIR-V2X 上评估 cooperative 3D object detection。
+              作者构造 30 种 modality，并把 <code>m7, m13, m17, m25, m27, m30</code> 留作 inference-time emerging modalities。
+            </p>
+            <div class="metric-grid">
+              <div><span>OPV2V-H Avg AP@0.5</span><strong>0.716</strong></div>
+              <div><span>OPV2V-H Avg AP@0.7</span><strong>0.605</strong></div>
+              <div><span>DAIR-V2X Avg AP@0.5</span><strong>0.553</strong></div>
+              <div><span>DAIR-V2X Avg AP@0.7</span><strong>0.421</strong></div>
+            </div>
+
+            <h3>Any-to-any translation on OPV2V-H</h3>
+            <table>
+              <thead>
+                <tr><th>Method</th><th>Avg. AP@0.5</th><th>Avg. AP@0.7</th></tr>
+              </thead>
+              <tbody>
+                <tr><td>MPDA</td><td>0.622</td><td>0.508</td></tr>
+                <tr><td>PnPDA</td><td>0.637</td><td>0.524</td></tr>
+                <tr><td>PolyInter</td><td>0.644</td><td>0.539</td></tr>
+                <tr><td>STAMP</td><td>0.653</td><td>0.527</td></tr>
+                <tr><td>NegoCollab</td><td>0.662</td><td>0.538</td></tr>
+                <tr><td>Classic MoE</td><td>0.653</td><td>0.544</td></tr>
+                <tr><td><strong>UniTrans</strong></td><td><strong>0.716</strong></td><td><strong>0.605</strong></td></tr>
+              </tbody>
+            </table>
+
+            <h3>Any-to-any translation on DAIR-V2X</h3>
+            <table>
+              <thead>
+                <tr><th>Method</th><th>Avg. AP@0.5</th><th>Avg. AP@0.7</th></tr>
+              </thead>
+              <tbody>
+                <tr><td>MPDA</td><td>0.489</td><td>0.374</td></tr>
+                <tr><td>PnPDA</td><td>0.508</td><td>0.385</td></tr>
+                <tr><td>PolyInter</td><td>0.486</td><td>0.373</td></tr>
+                <tr><td>STAMP</td><td>0.503</td><td>0.384</td></tr>
+                <tr><td>NegoCollab</td><td>0.509</td><td>0.389</td></tr>
+                <tr><td>Classic MoE</td><td>0.523</td><td>0.388</td></tr>
+                <tr><td><strong>UniTrans</strong></td><td><strong>0.553</strong></td><td><strong>0.421</strong></td></tr>
+              </tbody>
+            </table>
+
+            <h3>效率对比</h3>
+            <table>
+              <thead>
+                <tr><th>Method</th><th>GFLOPs</th><th>CPU ms</th><th>CUDA ms</th></tr>
+              </thead>
+              <tbody>
+                <tr><td>MPDA</td><td>124.6</td><td>11.852</td><td>46.814</td></tr>
+                <tr><td>Classic MoE</td><td>245.5</td><td>89.078</td><td>141.352</td></tr>
+                <tr><td><strong>UniTrans</strong></td><td><strong>109.3</strong></td><td><strong>6.865</strong></td><td>53.760</td></tr>
+              </tbody>
+            </table>
+          </section>
+
+          <section id="ablations" class="section">
+            <h2>消融实验</h2>
+            <table>
+              <thead>
+                <tr>
+                  <th>ID</th><th>L_IC</th><th>L_IS</th><th>L_task</th><th>L_feat</th><th>L_ctr</th><th>L_r</th><th>AP@0.5</th><th>AP@0.7</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr><td>0</td><td>✓</td><td>✓</td><td>✓</td><td>✓</td><td>✓</td><td>✓</td><td>0.716</td><td>0.605</td></tr>
+                <tr><td>1</td><td>×</td><td>✓</td><td>✓</td><td>✓</td><td>✓</td><td>✓</td><td>0.685</td><td>0.575</td></tr>
+                <tr><td>2</td><td>✓</td><td>×</td><td>✓</td><td>✓</td><td>✓</td><td>✓</td><td>0.694</td><td>0.583</td></tr>
+                <tr><td>3</td><td>×</td><td>×</td><td>✓</td><td>✓</td><td>✓</td><td>✓</td><td>0.662</td><td>0.540</td></tr>
+                <tr><td>4</td><td>✓</td><td>✓</td><td>×</td><td>✓</td><td>✓</td><td>✓</td><td>0.691</td><td>0.579</td></tr>
+                <tr><td>5</td><td>✓</td><td>✓</td><td>✓</td><td>×</td><td>✓</td><td>✓</td><td>0.653</td><td>0.531</td></tr>
+                <tr><td>6</td><td>✓</td><td>✓</td><td>✓</td><td>✓</td><td>×</td><td>✓</td><td>0.688</td><td>0.576</td></tr>
+                <tr><td>7</td><td>✓</td><td>✓</td><td>✓</td><td>✓</td><td>✓</td><td>×</td><td>0.708</td><td>0.598</td></tr>
+              </tbody>
+            </table>
+            <p>
+              <code>L_IC</code> 和 <code>L_IS</code> 分别去掉都会下降，两个都去掉退化到 0.662/0.540。
+              去掉 <code>L_feat</code> 降幅最大，说明 feature distillation 是翻译质量的强监督。
+            </p>
+          </section>
+
+          <section id="qa" class="section">
+            <h2>你问过的问题与当前理解</h2>
+            <h3>Figure 2 怎么看？</h3>
+            <p>
+              Figure 2 是三段式：左上训练 MIE，右上训练 translator experts，下方推理时对新异构 agent 做现场 translator 实例化。
+              第一阶段回答“你是什么风格的 feature”，第二阶段回答“从你的风格到 ego 风格应该怎么翻译”，推理阶段不再重新训练。
+            </p>
+            <h3>MIE 第一阶段两个损失分别干什么？</h3>
+            <p>
+              <code>L_IC</code> 是对比学习，负责同模态拉近、异模态推远，让 latent space 有结构；
+              <code>L_IS</code> 是辅助模态分类，负责让 intrinsic code 具有清楚的 modality identity。
+              一句话：<code>L_IC</code> 学空间结构，<code>L_IS</code> 学模态身份。
+            </p>
+            <h3>它和普通 MoE 有什么不同？</h3>
+            <p>
+              普通 MoE 常常执行多个 expert 并融合输出；UniTrans 根据 mapping 先组合 expert parameters，
+              实例化一个 translator 后只 forward 一次，所以更适合车端实时协同感知。
+            </p>
+          </section>
+
+          <section id="relation" class="section">
+            <h2>对你研究思路的启发</h2>
+            <p>
+              这篇虽然不是 world model planning，但它提供了一种很漂亮的范式：
+              先学习 intrinsic relation space，再用 router 将关系转化为可执行模块。
+            </p>
+            <div class="flow-grid">
+              <div>
+                <span>UniTrans</span>
+                <p>feature → modality intrinsic code → mapping router → translator parameters。</p>
+              </div>
+              <div>
+                <span>可迁移到你的方向</span>
+                <p>future scene → planning factor code → factor gate/router → planner adapter/refiner。</p>
+              </div>
+              <div>
+                <span>关键启发</span>
+                <p>gate 不一定只做 feature 加权，也可以做 parameter conditioning。</p>
+              </div>
+              <div>
+                <span>可能创新</span>
+                <p>学习 planning-factor intrinsic space，并根据 factor-context relation 动态实例化 planner。</p>
+              </div>
+            </div>
+          </section>
+
+          <section id="limits" class="section">
+            <h2>局限与疑问</h2>
+            <ul>
+              <li><strong>任务仍是感知：</strong>指标是 cooperative 3D detection AP，不证明规划安全性。</li>
+              <li><strong>zero-shot 依赖训练覆盖：</strong>训练阶段见过 24 个 modality，泛化能力依赖模态库足够丰富。</li>
+              <li><strong>MIE 是否真正 scene-invariant 仍需更多分析：</strong>统计特征可能仍受场景内容影响。</li>
+              <li><strong>L_feat 依赖 paired teacher feature：</strong>现实跨厂商部署不一定容易得到同一 observation 的 ego-domain teacher。</li>
+              <li><strong>baseline 设置需谨慎解读：</strong>很多 prior methods 原本不是为 zero-shot any-to-any 设计的。</li>
+            </ul>
+          </section>
+        </article>
+      </div>
+    </main>
+  </body>
+</html>
