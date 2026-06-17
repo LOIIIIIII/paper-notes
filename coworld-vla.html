@@ -1,0 +1,412 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>CoWorld-VLA 论文精读笔记</title>
+    <meta
+      name="description"
+      content="CoWorld-VLA: Thinking in a Multi-Expert World Model for Autonomous Driving 中文论文精读笔记。"
+    />
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body class="theme-indigo">
+    <header class="site-header">
+      <nav class="nav">
+        <a class="brand" href="./coworld-vla.html">CoWorld-VLA 笔记</a>
+        <div class="nav-links">
+          <a href="./index.html">LVDrive</a>
+          <a href="./autovla.html">AutoVLA</a>
+          <a href="./epona.html">Epona</a>
+          <a href="./resworld.html">ResWorld</a>
+          <a href="#innovation">创新</a>
+          <a href="#method">方法</a>
+          <a href="#experiments">实验</a>
+          <a href="#qa">Q&A</a>
+        </div>
+      </nav>
+    </header>
+
+    <main>
+      <section class="hero">
+        <div class="hero-inner">
+          <p class="eyebrow">Multi-Expert Latent CoT / VLA / World Model</p>
+          <h1>CoWorld-VLA 论文精读笔记</h1>
+          <p class="hero-summary">
+            CoWorld-VLA 的核心思路是把 VLA 的中间推理从自然语言 CoT 改成多专家 latent CoT：
+            用 semantic、geometry、dynamic、trajectory 四类 expert tokens 承载世界知识，
+            再用 diffusion planner 将这些条件融合成连续轨迹。
+          </p>
+          <div class="meta-grid">
+            <div>
+              <span>论文标题</span>
+              <strong>CoWorld-VLA: Thinking in a Multi-Expert World Model for Autonomous Driving</strong>
+            </div>
+            <div>
+              <span>论文信息</span>
+              <strong>arXiv:2605.10426v2；代码承诺发布 github.com/AFARI-Research/CoWorld-VLA</strong>
+            </div>
+            <div>
+              <span>关键词</span>
+              <strong>Latent CoT · Expert Tokens · V-JEPA · VGGT · Wan · HMEF Diffusion Planner</strong>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <div class="layout">
+        <aside class="toc" aria-label="目录">
+          <a href="#summary">一句话</a>
+          <a href="#problem">问题意识</a>
+          <a href="#innovation">创新点</a>
+          <a href="#method">方法总览</a>
+          <a href="#stage1">Stage 1</a>
+          <a href="#stage2">Stage 2</a>
+          <a href="#stage3">Stage 3</a>
+          <a href="#experiments">实验</a>
+          <a href="#ablations">消融</a>
+          <a href="#qa">Q&A</a>
+          <a href="#relation">研究启发</a>
+          <a href="#limits">局限</a>
+        </aside>
+
+        <article class="article">
+          <section id="summary" class="section lead-section">
+            <h2>一句话总结</h2>
+            <p class="lead">
+              CoWorld-VLA 不满足于一个整体 future latent，而是把世界知识拆成语义交互、几何结构、
+              动态演化和轨迹先验四类 expert tokens，并让这些 planning-accessible latent states
+              直接条件化 diffusion trajectory planner。
+            </p>
+          </section>
+
+          <section id="problem" class="section">
+            <h2>论文要解决的问题</h2>
+            <p>
+              论文认为 VLA 自动驾驶的关键瓶颈不是“没有推理”，而是缺少一种既保留连续时空结构、
+              又能直接进入 planner 的中间推理状态。文本 CoT 虽然可解释，但容易丢失几何、速度和动态关系；
+              单一 latent world representation 又可能不完整，并且常常只作为辅助监督存在。
+            </p>
+            <ul>
+              <li><strong>Direct action prediction：</strong>直接从图像和指令输出 action，中间没有可控 reasoning state。</li>
+              <li><strong>Textual CoT：</strong>自然语言推理会增加延迟，也难以表达连续空间和运动轨迹。</li>
+              <li><strong>Single-world latent：</strong>单一隐式世界表征难以同时覆盖语义、几何、动态和行为目标。</li>
+              <li><strong>World-to-action gap：</strong>很多 world model 的未来知识没有在推理时显式影响轨迹生成。</li>
+            </ul>
+            <figure>
+              <img src="./assets/coworld-figure-1-paradigms.png" alt="CoWorld-VLA reasoning paradigms comparison" />
+              <figcaption>
+                Figure 1：CoWorld-VLA 把文本 CoT 和单一 latent reasoning 推进为 multi-expert latent world reasoning，
+                用多个 Latent CoT experts 条件化 fusion diffusion planner。
+              </figcaption>
+            </figure>
+          </section>
+
+          <section id="innovation" class="section">
+            <h2>创新点怎么理解</h2>
+            <div class="innovation-grid">
+              <div>
+                <span>Innovation 1</span>
+                <h3>Multi-Expert Latent CoT</h3>
+                <p>
+                  把中间推理状态拆成 <code>H_sem</code>、<code>H_geo</code>、<code>H_dyn</code>、<code>H_traj</code>
+                  四类 expert token，而不是让一个 latent 同时承担所有世界知识。
+                </p>
+              </div>
+              <div>
+                <span>Innovation 2</span>
+                <h3>多源专家监督</h3>
+                <p>
+                  分别用 V-JEPA、VGGT、Wan video world model 和 trajectory regression 监督四类 token，
+                  让 VLM hidden states 被塑造成语义、几何、动态和规划目标的结构化表示。
+                </p>
+              </div>
+              <div>
+                <span>Innovation 3</span>
+                <h3>Planner-accessible world states</h3>
+                <p>
+                  这些 expert tokens 不只是训练时辅助 loss，而是在 Stage 3 作为 HMEF planner 的条件，
+                  直接参与 denoising trajectory generation。
+                </p>
+              </div>
+              <div>
+                <span>Innovation 4</span>
+                <h3>Hierarchical Multi-Expert Fusion</h3>
+                <p>
+                  HMEF 为每类 expert 生成轨迹分支，并学习融合权重，把世界知识转化成连续 ego trajectory。
+                  论文报告 dynamic 和 trajectory expert 收敛后权重最高。
+                </p>
+              </div>
+            </div>
+            <div class="callout">
+              <strong>和你的因子码本想法的连接</strong>
+              <p>
+                这篇论文已经很接近“预设多种 planning-relevant factors + 学习融合权重”。
+                不同之处在于：它用连续 expert tokens，而不是 factor codebook；融合权重更像全局 learned weights，
+                还不是强场景自适应 gate。
+              </p>
+            </div>
+          </section>
+
+          <section id="method" class="section">
+            <h2>方法总览</h2>
+            <figure>
+              <img src="./assets/coworld-figure-2-framework.png" alt="CoWorld-VLA overall framework" />
+              <figcaption>
+                Figure 2：CoWorld-VLA 采用三阶段训练：Wan latent world model 预训练、多专家 world representation learning、
+                以及 HMEF diffusion trajectory planning。
+              </figcaption>
+            </figure>
+            <pre><code>Stage 1:
+historical frames + ego intention -> Wan latent world model -> future latent dynamics
+
+Stage 2:
+current image + prompt + expert tokens -> Qwen3-VL hidden states
+H_sem aligns V-JEPA future semantics
+H_geo aligns VGGT future geometry
+H_dyn conditions Wan future generation
+H_traj regresses future trajectory
+
+Stage 3:
+scene tokens + four expert tokens -> HMEF diffusion planner -> continuous ego trajectory</code></pre>
+          </section>
+
+          <section id="stage1" class="section">
+            <h2>Stage 1：Action-conditioned Predictive World Model</h2>
+            <p>
+              第一阶段训练一个基于 Wan2.2-5B 的预测式视频世界模型。论文中的 action-conditioned
+              不是低层控制量，而是由场景、速度、导航指令和轨迹序列组成的文本条件。
+            </p>
+            <p>
+              输入视频序列被 frozen Wan VAE 编码成历史 latent <code>z_h</code> 和未来 latent <code>z_f</code>。
+              训练时只对未来 segment 加噪，并用 flow matching 学习未来 latent 的速度场：
+            </p>
+            <pre><code>z = E_vae(x) = [z_h, z_f]
+z_f,σ = (1 - σ) z_f + σ ε
+v_target = ε - z_f
+L_flow = || Fθ([z_h, z_f,σ], c, σ)_f - (ε - z_f) ||²</code></pre>
+            <p>
+              这样 world model 的学习重点放在未来演化，而历史帧 latent 作为确定性上下文。
+            </p>
+          </section>
+
+          <section id="stage2" class="section">
+            <h2>Stage 2：Multi-Expert Representation Learning</h2>
+            <p>
+              第二阶段用 Qwen3-VL-2B 作为 VLM backbone。模型输入当前图像、驾驶 prompt，并插入四类
+              expert-specific action tokens。经过 VLM 后，取这些 token 位置的 hidden states：
+            </p>
+            <pre><code>{H_ctx, H_sem, H_geo, H_dyn, H_traj}
+  = πθ(e_img, e_txt, t_sem, t_geo, t_dyn, t_traj)</code></pre>
+            <div class="flow-grid">
+              <div>
+                <span>Semantic Interaction</span>
+                <p><code>H_sem</code> 对齐 frozen V-JEPA 从未来观测提取的语义/预测特征，学习高层交互信息。</p>
+              </div>
+              <div>
+                <span>Geometric Structure</span>
+                <p><code>H_geo</code> 对齐 frozen VGGT 的几何特征，学习道路结构、空间约束和 3D grounding。</p>
+              </div>
+              <div>
+                <span>Dynamic Evolution</span>
+                <p><code>H_dyn</code> 作为 Wan world model 的条件，替代文本条件来生成未来场景。</p>
+              </div>
+              <div>
+                <span>Ego Trajectory</span>
+                <p><code>H_traj</code> 通过轻量 MLP 回归未来轨迹，使 latent state 具备行为目标信息。</p>
+              </div>
+            </div>
+            <p>总损失是四个分支的加权和：</p>
+            <pre><code>L_total = w_dyn L_dyn + w_sem L_sem + w_geo L_geo + w_traj L_traj</code></pre>
+            <div class="callout">
+              <strong>JEPA 到底怎么用？</strong>
+              <p>
+                论文不是使用“JEPA 格式 token”，而是用 frozen V-JEPA 从未来观测中提取 teacher feature，
+                再让 VLM 里的 <code>H_sem</code> 通过 SmoothL1 和 cosine loss 对齐它。
+                推理时没有未来帧，但 <code>H_sem</code> 已被训练成能从当前观测预测未来相关语义交互信息。
+              </p>
+            </div>
+          </section>
+
+          <section id="stage3" class="section">
+            <h2>Stage 3：HMEF Diffusion Planner</h2>
+            <p>
+              第三阶段把 Stage 2 学到的 expert tokens 输入 Hierarchical Multi-Expert Fusion planner。
+              HMEF 在 normalized action space 中从高斯噪声轨迹开始 denoising，逐步生成连续轨迹。
+            </p>
+            <pre><code>Aτ = (1 - τ) ε + τ A_norm
+X0 = Dθ(C, R, eτ)
+A_final = Σ α_e A_e</code></pre>
+            <p>
+              其中 <code>C</code> 是压缩后的 scene context tokens，<code>R</code> 是 noisy action tokens 与专家条件，
+              每个 expert branch 生成一个轨迹预测，最终用 learned fusion weights 融合。
+            </p>
+            <div class="callout">
+              <strong>token 权重是学习来的还是人工定义？</strong>
+              <p>
+                四种 token 的类别是人工定义的：semantic、geometry、dynamic、trajectory。
+                但最终融合权重 <code>α = softmax(w)</code> 是训练学习得到的。论文 appendix 写到，初始均匀为 0.25；
+                收敛后约为 dynamic 0.35、trajectory 0.31、semantic 0.19、geometry 0.15。
+              </p>
+            </div>
+          </section>
+
+          <section id="experiments" class="section">
+            <h2>实验结果</h2>
+            <p>
+              论文在 NuPlan 上训练/评估 future video generation，在 NAVSIM v1 上评估 trajectory planning。
+              NAVSIM 采用 non-reactive open-loop protocol，主指标为 PDMS，并包含 NC、DAC、TTC、Comfort 和 EP。
+            </p>
+            <div class="metric-grid">
+              <div><span>Planning PDMS</span><strong>89.8</strong></div>
+              <div><span>No at-fault Collision</span><strong>99.2</strong></div>
+              <div><span>Ego Progress</span><strong>83.6</strong></div>
+              <div><span>Video FVD</span><strong>32.7</strong></div>
+            </div>
+
+            <h3>NAVSIM 主结果</h3>
+            <table>
+              <thead>
+                <tr>
+                  <th>Method</th>
+                  <th>Sensors</th>
+                  <th>Frames</th>
+                  <th>NC↑</th>
+                  <th>DAC↑</th>
+                  <th>TTC↑</th>
+                  <th>EP↑</th>
+                  <th>PDMS↑</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr><td>DiffusionDrive</td><td>C&L</td><td>N</td><td>98.2</td><td>96.2</td><td>94.7</td><td>82.2</td><td>88.1</td></tr>
+                <tr><td>ResWorld</td><td>C&L</td><td>N</td><td>98.9</td><td>96.5</td><td>95.6</td><td>83.1</td><td>89.0</td></tr>
+                <tr><td>DriveLaW</td><td>C</td><td>N</td><td>99.0</td><td>97.1</td><td>96.7</td><td>81.3</td><td>89.1</td></tr>
+                <tr><td>Uni-World VLA</td><td>C</td><td>N</td><td>98.7</td><td>96.7</td><td>96.1</td><td>83.2</td><td>89.4</td></tr>
+                <tr><td><strong>CoWorld-VLA</strong></td><td>C</td><td>1</td><td><strong>99.2</strong></td><td>96.8</td><td>96.6</td><td><strong>83.6</strong></td><td><strong>89.8</strong></td></tr>
+              </tbody>
+            </table>
+
+            <h3>视频生成质量</h3>
+            <table>
+              <thead>
+                <tr><th>Method</th><th>Dataset</th><th>FVD↓</th></tr>
+              </thead>
+              <tbody>
+                <tr><td>SVD</td><td>NAVSIM</td><td>227.5</td></tr>
+                <tr><td>GenAD</td><td>OpenDV</td><td>184.0</td></tr>
+                <tr><td>DrivingGPT</td><td>NAVSIM</td><td>142.6</td></tr>
+                <tr><td>Epona</td><td>NuPlan</td><td>61.3</td></tr>
+                <tr><td>DriveLaW</td><td>NuPlan</td><td>55.6</td></tr>
+                <tr><td><strong>CoWorld-VLA</strong></td><td>NAVSIM</td><td><strong>32.7</strong></td></tr>
+              </tbody>
+            </table>
+            <figure>
+              <img src="./assets/coworld-figure-3-video-generation.png" alt="CoWorld-VLA future video generation qualitative comparison" />
+              <figcaption>
+                Figure 3：Stage 2 相比 Stage 1 更能保持转向方向和车道级未来演化，说明 VLM latent world modeling 对 future generation 有约束作用。
+              </figcaption>
+            </figure>
+          </section>
+
+          <section id="ablations" class="section">
+            <h2>消融实验</h2>
+            <h3>四类 expert token 是否互补？</h3>
+            <table>
+              <thead>
+                <tr><th>EgoT.</th><th>Geo.</th><th>Sem.</th><th>Dyn.</th><th>NC↑</th><th>DAC↑</th><th>TTC↑</th><th>EP↑</th><th>PDMS↑</th></tr>
+              </thead>
+              <tbody>
+                <tr><td>✓</td><td></td><td></td><td></td><td>97.7</td><td>92.7</td><td>92.7</td><td>78.5</td><td>83.7</td></tr>
+                <tr><td>✓</td><td>✓</td><td></td><td></td><td>97.7</td><td>93.9</td><td>92.7</td><td>80.3</td><td>85.1</td></tr>
+                <tr><td>✓</td><td>✓</td><td>✓</td><td></td><td>98.4</td><td>95.6</td><td>95.0</td><td>81.9</td><td>87.7</td></tr>
+                <tr><td>✓</td><td>✓</td><td>✓</td><td>✓</td><td>98.4</td><td>96.5</td><td>95.3</td><td>82.3</td><td>88.7</td></tr>
+              </tbody>
+            </table>
+            <p>
+              结果显示：只用 trajectory token 已有基础规划能力；加入 geometry 提升空间约束；
+              加入 semantic 明显提升交互和安全；加入 dynamic 后进一步提升，说明未来动态信息提供互补规划线索。
+            </p>
+
+            <h3>HMEF 是否必要？</h3>
+            <table>
+              <thead>
+                <tr><th>Setting</th><th>NC↑</th><th>DAC↑</th><th>TTC↑</th><th>EP↑</th><th>PDMS↑</th></tr>
+              </thead>
+              <tbody>
+                <tr><td>Stage 2 VLM SFT</td><td>98.4</td><td>96.5</td><td>95.3</td><td>82.3</td><td>88.7</td></tr>
+                <tr><td>+ ReCogDrive Action Expert</td><td>98.5</td><td>96.9</td><td>95.4</td><td>83.2</td><td>89.1</td></tr>
+                <tr><td>+ HMEF</td><td>99.2</td><td>96.8</td><td>96.6</td><td>83.6</td><td>89.8</td></tr>
+              </tbody>
+            </table>
+            <figure>
+              <img src="./assets/coworld-figure-4-trajectory-planning.png" alt="CoWorld-VLA trajectory planning qualitative comparison" />
+              <figcaption>
+                Figure 4：Stage 2 能预测大致方向，但 Stage 3 的 HMEF 在车道保持和转弯场景中更贴近 GT。
+              </figcaption>
+            </figure>
+          </section>
+
+          <section id="qa" class="section">
+            <h2>你问过的问题与当前理解</h2>
+            <h3>四种 token 的权重是学习来的还是人工定义的？</h3>
+            <p>
+              token 类型是人工定义的，权重是学习来的。作者手工设定 semantic、geometry、dynamic、trajectory 四类 expert；
+              HMEF 中的融合权重 <code>α = softmax(w)</code> 是可学习参数。论文给出的收敛权重说明 dynamic 和 trajectory 分支更重要。
+            </p>
+            <h3>什么叫 JEPA token？</h3>
+            <p>
+              更准确地说，不是 JEPA token，而是“用 JEPA feature 监督 semantic token”。
+              <code>H_sem</code> 是 VLM 内部的 expert token hidden state；frozen V-JEPA 从未来观测中提取 teacher feature，
+              训练时让 <code>H_sem</code> 对齐它。推理时没有未来观测，但 <code>H_sem</code> 已学习到未来相关语义交互信息。
+            </p>
+          </section>
+
+          <section id="relation" class="section">
+            <h2>对你研究思路的启发</h2>
+            <p>
+              CoWorld-VLA 可以作为“因子化 future latent”方向的重要相关工作。它说明多类 planning-relevant factors
+              比单一 world latent 更有潜力，而且这些 factors 必须通过明确接口进入 planner。
+            </p>
+            <div class="flow-grid">
+              <div>
+                <span>它已经做了什么</span>
+                <p>人工定义四类连续 expert tokens，并用多源专家模型监督。</p>
+              </div>
+              <div>
+                <span>你的可创新空间</span>
+                <p>把 continuous expert tokens 推进为 factor codebook，形成可检索、可组合的 planning factor prototypes。</p>
+              </div>
+              <div>
+                <span>它的权重机制</span>
+                <p>更像全局 learned fusion weights，场景自适应不强。</p>
+              </div>
+              <div>
+                <span>你的 gate 方向</span>
+                <p>让 gate 根据场景、指令、ego state、risk 动态决定哪些 factor 真正影响 planner。</p>
+              </div>
+            </div>
+            <div class="callout">
+              <strong>可以写进你 proposal 的差异</strong>
+              <p>
+                CoWorld-VLA manually defines four continuous expert tokens, while a factor-codebook approach can learn
+                planning-guided factor prototypes and perform scene-adaptive factor selection for trajectory planning.
+              </p>
+            </div>
+          </section>
+
+          <section id="limits" class="section">
+            <h2>局限与疑问</h2>
+            <ul>
+              <li><strong>训练成本很高：</strong>Stage 1 用 64 张 A800 约 74 小时，Stage 2 用 32 张 A800 约 70 小时，Stage 3 用 16 张 A800 约 20 小时。</li>
+              <li><strong>输入仍是单帧前视：</strong>论文承认当前模型 limited to single-image inputs，动态理解可能受限。</li>
+              <li><strong>NAVSIM 不是完整交互闭环：</strong>PDMS 很强，但不能直接等价于 CARLA/Bench2Drive 式闭环能力。</li>
+              <li><strong>依赖多个强专家模型：</strong>V-JEPA、VGGT、Wan、Qwen3-VL 共同提供能力，系统复杂且复现门槛高。</li>
+              <li><strong>expert 可解释性还有限：</strong>命名清晰，但 hidden states 是否真正分工清楚，仍需要更多可视化和定量分析。</li>
+            </ul>
+          </section>
+        </article>
+      </div>
+    </main>
+  </body>
+</html>
