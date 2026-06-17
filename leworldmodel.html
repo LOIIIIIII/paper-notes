@@ -1,0 +1,385 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>LeWorldModel 论文精读笔记</title>
+    <meta
+      name="description"
+      content="LeWorldModel: Stable End-to-End Joint-Embedding Predictive Architecture from Pixels 中文论文精读笔记。"
+    />
+    <link rel="stylesheet" href="./styles.css" />
+    <style>
+      .theme-teal .hero-summary,
+      .theme-teal .meta-grid strong {
+        overflow-wrap: anywhere;
+      }
+
+      @media (max-width: 700px) {
+        .theme-teal pre {
+          white-space: pre-wrap;
+          word-break: break-word;
+        }
+
+        .theme-teal table {
+          display: block;
+          overflow-x: auto;
+          white-space: nowrap;
+        }
+      }
+    </style>
+  </head>
+  <body class="theme-teal">
+    <header class="site-header">
+      <nav class="nav">
+        <a class="brand" href="./leworldmodel.html">LeWM 笔记</a>
+        <div class="nav-links">
+          <a href="./index.html">LVDrive</a>
+          <a href="./dlwm.html">DLWM</a>
+          <a href="./resworld.html">ResWorld</a>
+          <a href="./world4drive.html">World4Drive</a>
+          <a href="./epona.html">Epona</a>
+          <a href="#collapse">坍塌</a>
+          <a href="#sigreg">SIGReg</a>
+          <a href="#experiments">实验</a>
+          <a href="#takeaways">启发</a>
+        </div>
+      </nav>
+    </header>
+
+    <main>
+      <section class="hero">
+        <div class="hero-inner">
+          <p class="eyebrow">End-to-End JEPA / Latent World Model</p>
+          <h1>LeWorldModel 精读笔记</h1>
+          <p class="hero-summary">
+            LeWM 用一个极简的两项训练目标，把从像素端到端训练 JEPA 世界模型时最麻烦的 representation collapse
+            问题，转化为 latent distribution matching：既要预测未来 latent，又不能让表示坍塌成一个点。
+          </p>
+          <div class="meta-grid">
+            <div>
+              <span>论文标题</span>
+              <strong>LeWorldModel: Stable End-to-End Joint-Embedding Predictive Architecture from Pixels</strong>
+            </div>
+            <div>
+              <span>来源与对象</span>
+              <strong>arXiv:2603.19312v3；本笔记基于本地 PDF 与前序问答整理</strong>
+            </div>
+            <div>
+              <span>关键词</span>
+              <strong>JEPA · SIGReg · Anti-collapse · Latent MPC · Reward-free Offline Control</strong>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <div class="layout">
+        <aside class="toc" aria-label="目录">
+          <a href="#summary">一句话</a>
+          <a href="#problem">问题</a>
+          <a href="#innovation">创新点</a>
+          <a href="#method">方法总览</a>
+          <a href="#collapse">表示坍塌</a>
+          <a href="#sigreg">SIGReg</a>
+          <a href="#planning">Latent MPC</a>
+          <a href="#experiments">实验</a>
+          <a href="#probing">物理理解</a>
+          <a href="#limits">局限</a>
+          <a href="#takeaways">启发</a>
+        </aside>
+
+        <article class="article">
+          <section id="summary" class="section lead-section">
+            <h2>一句话总结</h2>
+            <p class="lead">
+              LeWorldModel 的核心贡献是：不用 frozen pretrained encoder、stop-gradient、EMA、重建损失或 reward supervision，
+              只靠 next-embedding prediction 和 SIGReg 高斯分布正则，就能从 raw pixels 稳定端到端训练 latent world model。
+            </p>
+          </section>
+
+          <section id="problem" class="section">
+            <h2>论文要解决的问题</h2>
+            <p>
+              JEPA 类 world model 希望不重建像素，而是在 compact latent space 中预测未来。这个方向很优雅：
+              模型只需要学习对未来预测和规划有用的状态变量，而不用生成所有视觉细节。但它也有一个致命问题：
+              如果 encoder 和 predictor 同时训练，单纯的 latent prediction loss 有一个平凡最优解。
+            </p>
+            <pre><code>z_t = encoder(o_t)
+z_{t+1} = encoder(o_{t+1})
+z_hat_{t+1} = predictor(z_t, a_t)
+
+L_pred = || z_hat_{t+1} - z_{t+1} ||^2</code></pre>
+            <p>
+              如果 encoder 把所有图像都编码成同一个常数向量，predictor 永远预测这个常数，预测损失仍然可以为 0。
+              因此，端到端 JEPA 必须解决 representation collapse。
+            </p>
+            <figure>
+              <img src="./assets/lewm-figure-2-comparison.png" alt="LeWM 和 PLDM、DINO-WM、Dreamer、TD-MPC 的范式比较" />
+              <figcaption>
+                Figure 2：LeWM 试图同时具备 end-to-end、pixels-based、task-agnostic、reward-free 和 anti-collapse guarantee。
+              </figcaption>
+            </figure>
+          </section>
+
+          <section id="innovation" class="section">
+            <h2>创新点怎么理解</h2>
+            <div class="innovation-grid">
+              <div>
+                <span>Innovation 1</span>
+                <h3>两项损失训练端到端 JEPA</h3>
+                <p>
+                  训练目标只有 prediction loss 和 SIGReg regularization。相比 PLDM 的多项 VICReg/temporal/IDM 损失，
+                  LeWM 把稳定性问题压缩成更清晰的 distribution matching。
+                </p>
+              </div>
+              <div>
+                <span>Innovation 2</span>
+                <h3>用高斯先验反坍塌</h3>
+                <p>
+                  SIGReg 要求 latent embeddings 接近 isotropic Gaussian。坍塌分布是一个点质量分布，
+                  与标准高斯的方差和形状都冲突，因此不再是总目标的好解。
+                </p>
+              </div>
+              <div>
+                <span>Innovation 3</span>
+                <h3>轻量潜空间规划</h3>
+                <p>
+                  LeWM 用 compact latent 做 CEM/MPC 规划。论文报告其规划速度可比 foundation-model-based DINO-WM 快约 48 倍。
+                </p>
+              </div>
+              <div>
+                <span>Innovation 4</span>
+                <h3>物理结构验证</h3>
+                <p>
+                  作者不仅看 success rate，还用 physical probing、latent decoding、violation-of-expectation 检查 latent 是否包含物理状态。
+                </p>
+              </div>
+            </div>
+            <div class="callout">
+              <strong>我的理解</strong>
+              <p>
+                LeWM 真正有价值的地方不是“性能全场第一”，而是给端到端 latent world model 提供了一个干净的反坍塌训练范式。
+              </p>
+            </div>
+          </section>
+
+          <section id="method" class="section">
+            <h2>方法总览</h2>
+            <figure>
+              <img src="./assets/lewm-figure-1-training.png" alt="LeWorldModel training pipeline and SIGReg" />
+              <figcaption>
+                Figure 1：encoder 和 predictor 端到端训练；SIGReg 在 latent 分布层面防止所有表示挤成同一个点。
+              </figcaption>
+            </figure>
+            <pre><code>offline trajectories: (o_1:T, a_1:T)
+        ↓
+encoder: z_t = encoder(o_t)
+        ↓
+predictor: z_hat_{t+1} = predictor(z_t, a_t)
+        ↓
+prediction loss: || z_hat_{t+1} - z_{t+1} ||^2
+        +
+SIGReg: match latent distribution to N(0, I)
+        ↓
+latent world model for goal-conditioned MPC</code></pre>
+          </section>
+
+          <section id="collapse" class="section">
+            <h2>表示坍塌：为什么会发生</h2>
+            <p>
+              只做 latent prediction 时，预测目标不是固定标签，而是 encoder 自己生成的下一帧表示。
+              因此 encoder 和 predictor 可以共同找到一个“作弊解”：
+            </p>
+            <pre><code>encoder(o) = c, for all o
+predictor(c, a) = c, for all a
+
+L_pred = || predictor(encoder(o_t), a_t) - encoder(o_{t+1}) ||^2
+       = || c - c ||^2
+       = 0</code></pre>
+            <p>
+              这个解从优化角度看是完美的，但从世界模型角度看完全没用：图像中的位置、速度、接触关系、动作后果都被抹掉了。
+              这也是为什么 frozen encoder 的 DINO-WM 不容易出现同样的问题：encoder 不更新，predictor 不能让目标 latent 一起塌。
+              但 LeWM 追求端到端训练，所以必须显式阻止 collapse。
+            </p>
+          </section>
+
+          <section id="sigreg" class="section">
+            <h2>SIGReg：数学上怎么反坍塌</h2>
+            <p>
+              LeWM 的完整目标是：
+            </p>
+            <pre><code>L_LeWM = L_pred + lambda * SIGReg(Z)
+
+L_pred = || predictor(encoder(o_t), a_t) - encoder(o_{t+1}) ||^2</code></pre>
+            <p>
+              其中 Z 是一个 batch 或一段轨迹里的 latent embeddings 集合：
+            </p>
+            <pre><code>Z = {z_1, z_2, ..., z_n}</code></pre>
+            <p>
+              SIGReg 的目标是让 latent 的整体分布接近标准高斯：
+            </p>
+            <pre><code>P_Z ≈ N(0, I)</code></pre>
+            <p>
+              如果发生坍塌：
+            </p>
+            <pre><code>z_i = c, for all i
+P_Z = delta_c
+Var(Z) = 0</code></pre>
+            <p>
+              但标准高斯满足：
+            </p>
+            <pre><code>Var(N(0, I)) = I</code></pre>
+            <p>
+              所以坍塌分布和 SIGReg 的高斯目标冲突。坍塌时虽然 prediction loss 可以为 0，但 SIGReg 会很大：
+            </p>
+            <pre><code>L_LeWM = 0 + lambda * large</code></pre>
+
+            <h3>随机投影</h3>
+            <p>
+              高维分布直接检验很难，SIGReg 使用随机一维投影。采样 M 个单位方向：
+            </p>
+            <pre><code>u^(1), u^(2), ..., u^(M)
+|| u^(m) || = 1</code></pre>
+            <p>
+              把 latent 投影到每个方向：
+            </p>
+            <pre><code>h^(m) = Z u^(m)
+h_i^(m) = z_i · u^(m)</code></pre>
+            <p>
+              如果 z 服从标准高斯，那么任意单位方向上的投影都应服从一维标准正态：
+            </p>
+            <pre><code>z ~ N(0, I)  =>  z · u ~ N(0, 1)</code></pre>
+
+            <h3>Epps-Pulley normality test</h3>
+            <p>
+              对每个一维投影 h，SIGReg 用 characteristic function 比较它和标准高斯的差距：
+            </p>
+            <pre><code>phi_N(t; h) = (1 / N) * sum_{j=1}^N exp(i t h_j)
+phi_0(t) = exp(-t^2 / 2)
+
+T(h) = integral w(t) * | phi_N(t; h) - phi_0(t) |^2 dt</code></pre>
+            <p>
+              最后对所有随机方向取平均：
+            </p>
+            <pre><code>SIGReg(Z) = (1 / M) * sum_{m=1}^M T(Z u^(m))</code></pre>
+            <div class="callout">
+              <strong>Cramer-Wold 直觉</strong>
+              <p>
+                如果一个高维分布在所有一维方向上的投影都匹配另一个分布，那么高维联合分布也匹配。
+                LeWM 用有限个随机方向近似这个条件。论文默认 M = 1024。
+              </p>
+            </div>
+          </section>
+
+          <section id="planning" class="section">
+            <h2>Latent MPC：如何用世界模型规划</h2>
+            <p>
+              训练完成后，encoder 和 predictor 固定。给定当前图像和目标图像：
+            </p>
+            <pre><code>z_1 = encoder(o_1)
+z_g = encoder(o_g)</code></pre>
+            <p>
+              对候选动作序列进行 latent rollout：
+            </p>
+            <pre><code>z_hat_{t+1} = predictor(z_hat_t, a_t)</code></pre>
+            <p>
+              规划目标是让 rollout 终点接近目标 latent：
+            </p>
+            <pre><code>C(z_hat_H) = || z_hat_H - z_g ||^2
+
+a_1:H* = argmin C(z_hat_H)</code></pre>
+            <p>
+              论文使用 CEM 优化动作序列，并采用 MPC 方式执行和重规划。
+            </p>
+          </section>
+
+          <section id="experiments" class="section">
+            <h2>实验结果</h2>
+            <div class="metric-grid">
+              <div><span>参数量</span><strong>15M</strong></div>
+              <div><span>有效超参</span><strong>1 个 lambda</strong></div>
+              <div><span>Push-T SR</span><strong>96%</strong></div>
+              <div><span>规划加速</span><strong>最高 48x</strong></div>
+              <div><span>训练设定</span><strong>单 GPU 数小时</strong></div>
+            </div>
+            <figure>
+              <img src="./assets/lewm-figure-6-performance.png" alt="LeWM planning performance across environments" />
+              <figcaption>
+                Figure 6：LeWM 在 Push-T 和 Reacher 上优于 PLDM、DINO-WM；OGBench-Cube 上 DINO-WM 仍有优势。
+              </figcaption>
+            </figure>
+            <table>
+              <thead>
+                <tr>
+                  <th>任务</th>
+                  <th>LeWM</th>
+                  <th>PLDM</th>
+                  <th>DINO-WM</th>
+                  <th>关键信息</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr class="highlight"><td>Push-T</td><td>96</td><td>78</td><td>74</td><td>LeWM pixels-only 甚至超过 DINO-WM+prop 的 92</td></tr>
+                <tr><td>Reacher</td><td>86</td><td>78</td><td>79</td><td>LeWM 小幅领先</td></tr>
+                <tr><td>OGBench-Cube</td><td>74</td><td>65</td><td>86</td><td>DINO-WM 受益于 DINOv2 视觉预训练</td></tr>
+                <tr><td>Two-Room</td><td>87</td><td>100</td><td>97</td><td>简单低维环境可能不适合高维高斯 prior</td></tr>
+              </tbody>
+            </table>
+            <figure>
+              <img src="./assets/lewm-figure-3-speed.png" alt="LeWM planning speed compared with DINO-WM" />
+              <figcaption>
+                Figure 3：LeWM 因 latent token 更少，在固定计算预算下比 DINO-WM 更适合快速规划。
+              </figcaption>
+            </figure>
+          </section>
+
+          <section id="probing" class="section">
+            <h2>物理理解与 Surprise</h2>
+            <p>
+              作者用 probing 检查 latent 是否包含物理变量。在 Push-T 上，LeWM 对 agent location、block location、
+              block angle 的预测明显优于 PLDM，并接近 DINO-WM。更重要的是，violation-of-expectation 实验显示：
+              当物体发生 teleport 这类物理连续性破坏时，prediction error 会出现明显 spike；颜色突变的影响相对弱。
+            </p>
+            <figure>
+              <img src="./assets/lewm-figure-8-surprise.png" alt="Violation-of-expectation surprise results for LeWM" />
+              <figcaption>
+                Figure 8：LeWM 对物理 teleport 更敏感，对单纯颜色变化没那么敏感，说明 latent 更偏向可预测物理结构。
+              </figcaption>
+            </figure>
+          </section>
+
+          <section id="limits" class="section">
+            <h2>局限与疑问</h2>
+            <ul>
+              <li><strong>短视野：</strong>默认规划 horizon 只有 5 个模型步，长程推理仍未解决。</li>
+              <li><strong>依赖动作标签：</strong>训练需要 offline trajectories 中的 action；纯视频场景还需要 inverse dynamics 或 action abstraction。</li>
+              <li><strong>高斯 prior 不总是合适：</strong>Two-Room 的失败提示低维简单环境可能被高维 isotropic Gaussian 约束干扰。</li>
+              <li><strong>复杂 3D 细节不足：</strong>OGBench-Cube 中旋转、速度、end-effector yaw 等变量仍不如 DINO-WM。</li>
+              <li><strong>物理理解证据有限：</strong>probing 和 surprise 说明 latent 含物理信息，但还不能等同于可泛化物理推理。</li>
+            </ul>
+          </section>
+
+          <section id="takeaways" class="section">
+            <h2>对自动驾驶 World Model 的启发</h2>
+            <p>
+              LeWM 对自动驾驶最大的启发是：world model 的 latent 不应该只追求重建画面，而应该服务未来预测、规划和风险判断。
+              一个好的 driving latent 应该包含车道结构、动态实体位置速度、交互关系、物理约束、交通规则和不确定性。
+            </p>
+            <p>
+              但 LeWM 目前还不是自动驾驶方案本身。它缺少多车交互、地图语义、遮挡、长时序、多模态未来和安全约束。
+              更合理的用法是把它看成一个训练范式：在端到端 latent dynamics 中，用分布约束防止 collapse，
+              再用 probing / surprise / closed-loop planning 检查 latent 是否真的学到了可控世界状态。
+            </p>
+            <div class="callout">
+              <strong>复读建议</strong>
+              <p>
+                精读顺序：Section 3 的 objective 和 SIGReg，Figure 6 的控制结果，Table 1/4 的 physical probing，
+                Figure 8 的 surprise evaluation，再回到附录看 PLDM loss 对比和 ablation。
+              </p>
+            </div>
+          </section>
+        </article>
+      </div>
+    </main>
+  </body>
+</html>
