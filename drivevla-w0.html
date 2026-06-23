@@ -1,0 +1,513 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>DriveVLA-W0 论文精读笔记</title>
+    <meta
+      name="description"
+      content="DriveVLA-W0: World Models Amplify Data Scaling Law in Autonomous Driving 中文论文精读笔记。"
+    />
+    <link rel="stylesheet" href="./styles.css" />
+    <style>
+      .theme-drivevla .metric-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+        gap: 14px;
+        margin: 24px 0;
+      }
+
+      .theme-drivevla .metric-card {
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        background: #fff;
+        padding: 16px;
+      }
+
+      .theme-drivevla .metric-card span {
+        display: block;
+        color: var(--muted);
+        font-size: 0.86rem;
+        margin-bottom: 8px;
+      }
+
+      .theme-drivevla .metric-card strong {
+        display: block;
+        color: var(--ink);
+        font-size: 1.45rem;
+        line-height: 1.1;
+      }
+
+      .theme-drivevla .metric-card small {
+        display: block;
+        color: var(--muted);
+        margin-top: 8px;
+      }
+
+      .theme-drivevla .compare-table td,
+      .theme-drivevla .compare-table th {
+        vertical-align: top;
+      }
+
+      @media (max-width: 700px) {
+        .theme-drivevla pre {
+          white-space: pre-wrap;
+          word-break: break-word;
+        }
+
+        .theme-drivevla table {
+          display: block;
+          overflow-x: auto;
+          white-space: nowrap;
+        }
+      }
+    </style>
+  </head>
+  <body class="theme-drivevla">
+    <header class="site-header">
+      <nav class="nav">
+        <a class="brand" href="./drivevla-w0.html">DriveVLA-W0 笔记</a>
+        <div class="nav-links">
+          <a href="./index.html">LVDrive</a>
+          <a href="./leworldmodel.html">LeWM</a>
+          <a href="./coworld-vla.html">CoWorld-VLA</a>
+          <a href="./unitrans.html">UniTrans</a>
+          <a href="#problem">问题</a>
+          <a href="#method">方法</a>
+          <a href="#experiments">实验</a>
+          <a href="#questions">问答</a>
+          <a href="#limits">局限</a>
+        </div>
+      </nav>
+    </header>
+
+    <main>
+      <section class="hero">
+        <div class="hero-inner">
+          <p class="eyebrow">VLA / World Model / Data Scaling</p>
+          <h1>DriveVLA-W0 精读笔记</h1>
+          <p class="hero-summary">
+            DriveVLA-W0 把自动驾驶 VLA 的瓶颈概括为 supervision deficit：只用稀疏轨迹监督训练大模型，
+            很难释放大规模数据收益。论文用 future visual world modeling 提供密集自监督，并用 Action Expert
+            把强表征转成实时规划动作。
+          </p>
+          <div class="meta-grid">
+            <div>
+              <span>论文标题</span>
+              <strong>DriveVLA-W0: World Models Amplify Data Scaling Law in Autonomous Driving</strong>
+            </div>
+            <div>
+              <span>来源与对象</span>
+              <strong>ICLR 2026 conference paper；本地 PDF 与阅读问答整理</strong>
+            </div>
+            <div>
+              <span>关键词</span>
+              <strong>VLA · Future Image Prediction · Diffusion World Model · MoE Action Expert · Scaling Law</strong>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <div class="layout">
+        <aside class="toc" aria-label="目录">
+          <a href="#summary">一句话</a>
+          <a href="#problem">问题</a>
+          <a href="#innovation">创新点</a>
+          <a href="#method">方法总览</a>
+          <a href="#vq-vit">VQ vs ViT</a>
+          <a href="#world-model">World Model</a>
+          <a href="#action-expert">Action Expert</a>
+          <a href="#experiments">实验</a>
+          <a href="#ablations">消融</a>
+          <a href="#questions">问答沉淀</a>
+          <a href="#limits">局限</a>
+          <a href="#takeaways">启发</a>
+        </aside>
+
+        <article class="article">
+          <section id="summary" class="section lead-section">
+            <h2>一句话总结</h2>
+            <p class="lead">
+              DriveVLA-W0 的核心贡献是：在自动驾驶 VLA 中加入 future visual world modeling，
+              用密集视觉预测监督缓解 action-only training 的 supervision deficit，并在大规模数据下显著提升规划与安全指标。
+            </p>
+          </section>
+
+          <section id="problem" class="section">
+            <h2>论文要解决的问题</h2>
+            <p>
+              自动驾驶 VLA 的输入是高维视觉、语言和历史动作，但监督通常只有少量未来 waypoint 或 action tokens。
+              这种稀疏 action supervision 容易让模型学习数据集动作分布，而不是学习环境动态、交通交互和 ego action 后果。
+            </p>
+            <div class="callout">
+              <strong>核心矛盾</strong>
+              <p>
+                大模型需要高密度训练信号才容易 scale；自动驾驶模仿学习却常把整段视觉时序压缩成几个低维控制标签。
+                DriveVLA-W0 把这个矛盾命名为 supervision deficit。
+              </p>
+            </div>
+          </section>
+
+          <section id="innovation" class="section">
+            <h2>创新点怎么理解</h2>
+            <div class="innovation-grid">
+              <div>
+                <span>Innovation 1</span>
+                <h3>Dense world-model supervision</h3>
+                <p>
+                  把训练目标从单纯 action prediction 扩展到视觉未来/当前场景预测，让每帧图像或 latent 提供大量监督信号。
+                </p>
+              </div>
+              <div>
+                <span>Innovation 2</span>
+                <h3>兼容两类 VLA backbone</h3>
+                <p>
+                  Emu3/VQ 路线用 AR visual token prediction；Qwen2.5-VL/ViT 路线用 latent diffusion denoising。
+                </p>
+              </div>
+              <div>
+                <span>Innovation 3</span>
+                <h3>MoE Action Expert</h3>
+                <p>
+                  8B VLA Expert 学 rich representation，500M Action Expert 通过 Joint Attention 高效读取上下文并输出动作。
+                </p>
+              </div>
+              <div>
+                <span>Innovation 4</span>
+                <h3>Decoder scaling reversal</h3>
+                <p>
+                  小数据下 query-based decoder 更稳，大数据下 autoregressive action expert 更能建模复杂动作分布。
+                </p>
+              </div>
+            </div>
+          </section>
+
+          <section id="method" class="section">
+            <h2>方法总览</h2>
+            <figure>
+              <img src="./assets/drivevla-w0-figure-2-architecture.png" alt="DriveVLA-W0 AR 和 Diffusion world model 架构" />
+              <figcaption>
+                Figure 2：DriveVLA-W0 的两条 world modeling 路线。VQ/Emu3 用离散 visual token 做 AR 预测；
+                ViT/Qwen2.5-VL 用当前视觉与动作特征作为条件，对未来图像 latent 做 diffusion denoising。
+              </figcaption>
+            </figure>
+
+            <pre><code>L_t, V_t, A_{t-1}
+        ↓
+Emu3 (VQ) / Qwen2.5-VL (ViT)
+        ↓
+F_t^L, F_t^V, F_t^A
+        ↓
+Action prediction + World modeling auxiliary objective</code></pre>
+
+            <p>
+              Baseline VLA 输入是语言指令、前视图像和历史动作，组织成 interleaved sequence：
+            </p>
+            <pre><code>S_t = [L_{t-H}, V_{t-H}, A_{t-H-1}, ..., L_t, V_t, A_{t-1}]</code></pre>
+            <p>
+              action loss 是标准 cross entropy：
+            </p>
+            <pre><code>L_Action = - sum_i log P(a_i | S_t, a_&lt;i)</code></pre>
+          </section>
+
+          <section id="vq-vit" class="section">
+            <h2>VLA-VQ 和 VLA-ViT 的区别</h2>
+            <table class="compare-table">
+              <thead>
+                <tr>
+                  <th>版本</th>
+                  <th>Backbone</th>
+                  <th>视觉表示</th>
+                  <th>World Model</th>
+                  <th>关键影响</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>VLA-VQ</td>
+                  <td>Emu3 8B</td>
+                  <td>VQGAN/VQ tokenizer 离散 visual tokens</td>
+                  <td>AR World Model</td>
+                  <td>图像像文字一样进入 token sequence，可直接 next-token prediction。</td>
+                </tr>
+                <tr>
+                  <td>VLA-ViT</td>
+                  <td>Qwen2.5-VL 7B</td>
+                  <td>ViT 连续 visual embeddings</td>
+                  <td>Diffusion World Model</td>
+                  <td>没有离散 visual vocabulary，因此用 continuous latent denoising 提供密集监督。</td>
+                </tr>
+              </tbody>
+            </table>
+            <div class="callout">
+              <strong>一句话区分</strong>
+              <p>
+                VLA-VQ 把图像变成“视觉词”，适合 AR token prediction；VLA-ViT 把图像变成连续向量，
+                适合通过 diffusion/latent objective 学 future visual dynamics。
+              </p>
+            </div>
+          </section>
+
+          <section id="world-model" class="section">
+            <h2>World Model 细读</h2>
+            <h3>AR World Model</h3>
+            <p>
+              VQ 版本中，图像被离散成 visual tokens <code>v_1, ..., v_N</code>，因此训练目标就是视觉 next-token prediction：
+            </p>
+            <pre><code>L_WM-AR = - sum_i log P(v_i | S_&lt;Vt, v_&lt;i)
+L_Total = L_Action + alpha * L_WM-AR</code></pre>
+
+            <h3>Diffusion World Model</h3>
+            <p>
+              ViT 版本中，干净目标是未来图像 <code>I_{t+1}</code> 的 latent <code>z_{t+1}</code>，
+              条件是当前时刻 VLA 特征 <code>F_t^V, F_t^A</code>：
+            </p>
+            <pre><code>Image_{t+1} -> VAE Encoder -> z_{t+1}
+z_{t+1} + noise -> z_{t+1,k}
+epsilon_hat = Denoiser(z_{t+1,k}, k, F_t^V, F_t^A)
+
+L_WM-Diff = E || epsilon - epsilon_hat ||^2
+L_Total = L_Action + beta * L_WM-Diff</code></pre>
+            <p>
+              这里不是把 <code>t+1</code> 当作当前输入，而是让模型站在 <code>t</code> 时刻预测下一帧。
+              训练序列中存在 <code>V_{t+1}</code>，但它应作为监督目标，不能被 <code>F_t</code> 的 condition 偷看。
+            </p>
+          </section>
+
+          <section id="action-expert" class="section">
+            <h2>Action Expert 与三种解码</h2>
+            <figure>
+              <img src="./assets/drivevla-w0-figure-3-action-expert.png" alt="DriveVLA-W0 Action Expert 和三种动作解码方案" />
+              <figcaption>
+                Figure 3：MoE 由大 VLA Expert 和 500M Action Expert 组成，并比较 query-based、autoregressive 和 flow matching 三种动作解码。
+              </figcaption>
+            </figure>
+
+            <p>
+              Joint Attention 把两个 expert 的 Q/K/V 沿 token 维拼接：
+            </p>
+            <pre><code>Q = [Q_VLA; Q_AE]
+K = [K_VLA; K_AE]
+V = [V_VLA; V_AE]</code></pre>
+
+            <table>
+              <thead>
+                <tr>
+                  <th>Decoder</th>
+                  <th>动作建模</th>
+                  <th>优势</th>
+                  <th>主要风险</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>Query-based</td>
+                  <td>learnable queries + MLP 直接回归连续 waypoint</td>
+                  <td>快、稳定，小数据精度好</td>
+                  <td>复杂多峰动作分布下可能平均化</td>
+                </tr>
+                <tr>
+                  <td>Autoregressive</td>
+                  <td>逐个生成离散 action tokens，再 detokenize</td>
+                  <td>teacher forcing 明确，大数据下 scale 好</td>
+                  <td>存在 tokenization 量化误差</td>
+                </tr>
+                <tr>
+                  <td>Flow Matching</td>
+                  <td>学习从 noisy action 到 real action 的条件 vector field</td>
+                  <td>连续空间表达力强</td>
+                  <td>复杂动作分布上 sample efficiency 可能不足</td>
+                </tr>
+              </tbody>
+            </table>
+          </section>
+
+          <section id="experiments" class="section">
+            <h2>实验结果</h2>
+            <div class="metric-grid">
+              <div class="metric-card">
+                <span>NAVSIM v1</span>
+                <strong>93.0 PDMS</strong>
+                <small>DriveVLA-W0‡，单前视相机，接近 Human 94.8。</small>
+              </div>
+              <div class="metric-card">
+                <span>NAVSIM v2</span>
+                <strong>86.1 EPDMS</strong>
+                <small>超过 DiffusionDrive 84.5、ARTEMIS 83.1。</small>
+              </div>
+              <div class="metric-card">
+                <span>VQ @ 70M frames</span>
+                <strong>28.8% ADE</strong>
+                <small>加入 world model 后 ADE 改善。</small>
+              </div>
+              <div class="metric-card">
+                <span>ViT @ 70M frames</span>
+                <strong>15.9% Collision</strong>
+                <small>加入 world model 后碰撞率改善。</small>
+              </div>
+            </div>
+
+            <figure>
+              <img src="./assets/drivevla-w0-figure-4-generalization.png" alt="World model 提升跨数据集泛化" />
+              <figcaption>
+                Figure 4：NuPlan 到 NAVSIM 的迁移中，action-only baseline 可能受动作分布偏置伤害；
+                加 world model 后，预训练转为正收益。
+              </figcaption>
+            </figure>
+
+            <h3>Scaling Law：Table 3</h3>
+            <table>
+              <thead>
+                <tr>
+                  <th>模型</th>
+                  <th>ADE @ 70M ↓</th>
+                  <th>Collision @ 70M ↓</th>
+                  <th>结论</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>VLA (VQ) baseline</td>
+                  <td>1.4829</td>
+                  <td>0.0488</td>
+                  <td>action-only 在大数据下仍然受监督稀疏限制。</td>
+                </tr>
+                <tr>
+                  <td>VLA (VQ) + WM</td>
+                  <td>1.0563</td>
+                  <td>0.0392</td>
+                  <td>ADE 改善 28.8%，Collision 改善 19.7%。</td>
+                </tr>
+                <tr>
+                  <td>VLA (ViT) baseline</td>
+                  <td>1.1051</td>
+                  <td>0.0359</td>
+                  <td>ViT baseline 本身较强。</td>
+                </tr>
+                <tr>
+                  <td>VLA (ViT) + WM</td>
+                  <td>1.0640</td>
+                  <td>0.0302</td>
+                  <td>ADE 改善 3.7%，Collision 改善 15.9%。</td>
+                </tr>
+              </tbody>
+            </table>
+
+            <h3>Action Expert 反转：Table 4</h3>
+            <table>
+              <thead>
+                <tr>
+                  <th>Action Expert</th>
+                  <th>NAVSIM 小数据</th>
+                  <th>70M 大数据</th>
+                  <th>解释</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>Query-based</td>
+                  <td>PDMS 88.4，最好</td>
+                  <td>Collision 0.0453</td>
+                  <td>连续回归精度高，但复杂分布下表达瓶颈明显。</td>
+                </tr>
+                <tr>
+                  <td>Flow Matching</td>
+                  <td>PDMS 87.2</td>
+                  <td>Collision 0.0398</td>
+                  <td>连续生成能力强，但条件流场学习更吃训练预算。</td>
+                </tr>
+                <tr>
+                  <td>Autoregressive</td>
+                  <td>PDMS 85.3</td>
+                  <td>Collision 0.0295，最好</td>
+                  <td>大数据下 teacher-forced token modeling 更能 scale。</td>
+                </tr>
+              </tbody>
+            </table>
+          </section>
+
+          <section id="ablations" class="section">
+            <h2>消融与可视化</h2>
+            <p>
+              Vision-only vs vision-action sequence：
+            </p>
+            <pre><code>No pretrain -> 2VA: PDMS 80.7
+6V -> 2VA:        PDMS 84.1
+6VA -> 2VA:       PDMS 85.6</code></pre>
+            <p>
+              sequence length：
+            </p>
+            <pre><code>VA:  PDMS 83.3
+2VA: PDMS 84.2
+6VA: PDMS 85.6</code></pre>
+            <p>
+              这说明 action-conditioned visual prediction 和更长 temporal context 都对规划有帮助。
+            </p>
+
+            <figure>
+              <img src="./assets/drivevla-w0-figure-5-simulation.png" alt="DriveVLA-W0 action-conditioned simulation" />
+              <figcaption>
+                Figure 5：同一场景下用 decelerate/stop action 条件化未来生成，周围视觉流动速度随动作改变。
+                这是 action-conditioned simulation 的定性证据。
+              </figcaption>
+            </figure>
+          </section>
+
+          <section id="questions" class="section">
+            <h2>用户问答沉淀</h2>
+            <div class="qa-list">
+              <div>
+                <h3>为什么未来视觉比当前视觉更有利于规划？</h3>
+                <p>
+                  当前视觉重建更像感知；未来视觉预测逼模型学习动态、交互、风险提前量和 ego action 后果。
+                  规划关心的是 “if I do this, what happens next?”。
+                </p>
+              </div>
+              <div>
+                <h3>Diffusion 里干净图像是 t+1，这样合理吗？</h3>
+                <p>
+                  合理。它学习的是条件分布 <code>p(z_{t+1} | F_t^V, F_t^A)</code>。<code>t+1</code>
+                  是监督目标，<code>t</code> 是条件。
+                </p>
+              </div>
+              <div>
+                <h3>图中输入包含 V_{t+1}，会不会信息泄漏？</h3>
+                <p>
+                  训练序列中有 <code>V_{t+1}</code>，但预测未来时 condition 应只取 <code>F_t^V, F_t^A</code>。
+                  正确 causal mask/特征选择必须防止 <code>F_t</code> attend 到未来观测。
+                </p>
+              </div>
+              <div>
+                <h3>Flow Matching sample efficiency 不够是什么意思？</h3>
+                <p>
+                  它要学习复杂连续动作分布上的条件 vector field，监督比 AR token-level teacher forcing 更间接；
+                  在同等训练预算下，复杂大数据分布上可能不如 AR 稳定收敛。
+                </p>
+              </div>
+            </div>
+          </section>
+
+          <section id="limits" class="section">
+            <h2>局限与疑问</h2>
+            <ul>
+              <li>70M frames scaling 的核心证据来自 in-house dataset，外部复现难。</li>
+              <li>NAVSIM 是 benchmark/simulation-style evaluation，不等于真实车 closed-loop 安全验证。</li>
+              <li>Diffusion world model 是否真正学到强 counterfactual dynamics，还需要更量化的 action-conditioned rollout。</li>
+              <li>Table 3 中小数据下 world model 有时不稳定，说明 loss 权重和数据规模可能敏感。</li>
+              <li>NAVSIM v2 的 EC = 58.9 较低，舒适性指标仍有明显短板。</li>
+            </ul>
+          </section>
+
+          <section id="takeaways" class="section">
+            <h2>值得学习的地方</h2>
+            <p>
+              这篇论文最值得学的是问题定义方式：它没有只说 “加 world model 提分”，而是把 VLA scaling 的瓶颈
+              解释成 supervision density 不足。Table 3 的 scaling ablation 和 Table 4 的 decoder reversal
+              也很适合借鉴：一个证明训练范式，一个揭示 scale regime 改变方法选择。
+            </p>
+          </section>
+        </article>
+      </div>
+    </main>
+  </body>
+</html>
