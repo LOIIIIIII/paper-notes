@@ -14,6 +14,7 @@
 | Epona 自回归扩散 world model 方法笔记 | [GitHub Pages](https://loiiiiiii.github.io/paper-notes/epona.html) | [论文笔记 Markdown](./papers/Epona/Epona方法精读笔记.md), [HTML 页面](./epona.html) |
 | DLWM Gaussian-centric 预训练论文笔记 | [GitHub Pages](https://loiiiiiii.github.io/paper-notes/dlwm.html) | [论文笔记 Markdown](./papers/DLWM/DLWM论文笔记.md), [HTML 页面](./dlwm.html) |
 | LeWorldModel 端到端 JEPA 潜空间世界模型笔记 | [GitHub Pages](https://loiiiiiii.github.io/paper-notes/leworldmodel.html) | [论文笔记 Markdown](./papers/LeWorldModel/LeWorldModel论文笔记.md), [HTML 页面](./leworldmodel.html) |
+| AdaWM 自适应 world model 微调规划笔记 | [GitHub Pages](https://loiiiiiii.github.io/paper-notes/adawm.html) | [论文笔记 Markdown](./papers/AdaWM/AdaWM论文笔记.md), [HTML 页面](./adawm.html) |
 | ResWorld Temporal Residual World Model 论文笔记 | [GitHub Pages](https://loiiiiiii.github.io/paper-notes/resworld.html) | [论文笔记 Markdown](./papers/ResWorld/ResWorld论文笔记.md), [HTML 页面](./resworld.html) |
 | CoWorld-VLA 多专家 Latent CoT 论文笔记 | [GitHub Pages](https://loiiiiiii.github.io/paper-notes/coworld-vla.html) | [论文笔记 Markdown](./papers/CoWorld-VLA/CoWorld-VLA论文笔记.md), [HTML 页面](./coworld-vla.html) |
 | UniTrans 异构协同感知特征翻译论文笔记 | [GitHub Pages](https://loiiiiiii.github.io/paper-notes/unitrans.html) | [论文笔记 Markdown](./papers/UniTrans/UniTrans论文笔记.md), [HTML 页面](./unitrans.html) |
@@ -39,6 +40,8 @@ Epona 的核心思想是：用 continuous latent autoregression 和 diffusion ge
 DLWM 的核心思想是：用两阶段 Gaussian-centric 自监督预训练学习 3D Gaussian 几何语义和任务导向时序 latent，并用 dual latent world models 分别提升 occupancy perception/forecasting 与 motion planning。
 
 LeWorldModel 的核心思想是：用 next-embedding prediction 加 SIGReg 高斯分布正则，从 raw pixels 端到端稳定训练 JEPA 潜空间世界模型，并避免 representation collapse。
+
+AdaWM 的核心思想是：在线迁移时先诊断性能下降主要来自 dynamics model mismatch 还是 policy mismatch，再选择性低秩微调 world model 或重组 policy 子模块。
 
 ResWorld 的核心思想是：用 temporal residual 让 world model 聚焦动态对象，避免冗余静态建模，并通过 Future-Guided Trajectory Refinement 让未来 BEV 特征显式修正轨迹。
 

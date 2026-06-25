@@ -1,0 +1,429 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>AdaWM 论文精读笔记</title>
+    <meta
+      name="description"
+      content="AdaWM: Adaptive World Model Based Planning for Autonomous Driving 中文论文精读笔记。"
+    />
+    <link rel="stylesheet" href="./styles.css" />
+    <style>
+      .theme-blue .hero-summary,
+      .theme-blue .meta-grid strong {
+        overflow-wrap: anywhere;
+      }
+
+      @media (max-width: 700px) {
+        .theme-blue pre {
+          white-space: pre-wrap;
+          word-break: break-word;
+        }
+
+        .theme-blue table {
+          display: block;
+          overflow-x: auto;
+          white-space: nowrap;
+        }
+      }
+    </style>
+  </head>
+  <body class="theme-blue">
+    <header class="site-header">
+      <nav class="nav">
+        <a class="brand" href="./adawm.html">AdaWM 笔记</a>
+        <div class="nav-links">
+          <a href="./index.html">LVDrive</a>
+          <a href="./leworldmodel.html">LeWM</a>
+          <a href="./drivevla-w0.html">DriveVLA-W0</a>
+          <a href="./dlwm.html">DLWM</a>
+          <a href="./resworld.html">ResWorld</a>
+          <a href="#method">方法</a>
+          <a href="#finetune">微调</a>
+          <a href="#collab">协同</a>
+          <a href="#experiments">实验</a>
+          <a href="#limits">局限</a>
+        </div>
+      </nav>
+    </header>
+
+    <main>
+      <section class="hero">
+        <div class="hero-inner">
+          <p class="eyebrow">ICLR 2025 / Adaptive World Model Planning</p>
+          <h1>AdaWM 精读笔记</h1>
+          <p class="hero-summary">
+            AdaWM 关注的不是重新发明 world model，而是解决预训练 world model 和 policy 迁移到新驾驶任务时
+            “到底该修模拟器，还是该修决策者”的在线自适应微调问题。
+          </p>
+          <div class="meta-grid">
+            <div>
+              <span>论文标题</span>
+              <strong>AdaWM: Adaptive World Model Based Planning for Autonomous Driving</strong>
+            </div>
+            <div>
+              <span>来源与对象</span>
+              <strong>ICLR 2025；本笔记基于本地 PDF 阅读和前序问答整理</strong>
+            </div>
+            <div>
+              <span>关键词</span>
+              <strong>World Model RL · Online Finetuning · Dynamics Mismatch · Policy Mismatch · CARLA</strong>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <div class="layout">
+        <aside class="toc" aria-label="目录">
+          <a href="#summary">一句话</a>
+          <a href="#problem">问题</a>
+          <a href="#innovation">创新点</a>
+          <a href="#method">方法总览</a>
+          <a href="#gap">理论拆解</a>
+          <a href="#finetune">怎么微调</a>
+          <a href="#collab">协同机制</a>
+          <a href="#experiments">实验</a>
+          <a href="#ablations">消融</a>
+          <a href="#limits">局限</a>
+          <a href="#takeaways">启发</a>
+        </aside>
+
+        <article class="article">
+          <section id="summary" class="section lead-section">
+            <h2>一句话总结</h2>
+            <p class="lead">
+              AdaWM 把预训练 world model + planning policy 的在线迁移问题拆成 dynamics model mismatch 和 policy mismatch，
+              每一步先判断谁是主要性能瓶颈，再只用轻量参数更新对应模块，从而提升 CARLA 新任务中的 SR 和 TTC。
+            </p>
+          </section>
+
+          <section id="problem" class="section">
+            <h2>论文要解决的问题</h2>
+            <p>
+              World model based RL 通常先学一个 latent dynamics model，再在这个模型里训练 policy。
+              但自动驾驶场景变化很大：从右转到左转，从中等车流到密集车流，从熟悉 Town 到新 Town，都会让预训练系统掉性能。
+            </p>
+            <p>
+              直觉上可以继续 finetune，但关键问题是：掉性能时，到底是 world model 对新场景预测不准，还是 policy 的动作策略不适合？
+              如果盲目 model-only、policy-only 或 model+policy 交替更新，可能把另一个模块推得更不匹配。
+            </p>
+            <figure>
+              <img src="./assets/adawm-figure-1-motivating.png" alt="AdaWM motivating example comparing finetuning strategies" />
+              <figcaption>
+                Figure 1：从右转迁移到左转时，几种微调策略都会先掉性能；model-only 恢复较快，说明这类任务变化主要挑战 dynamics model。
+              </figcaption>
+            </figure>
+          </section>
+
+          <section id="innovation" class="section">
+            <h2>创新点怎么理解</h2>
+            <div class="innovation-grid">
+              <div>
+                <span>Innovation 1</span>
+                <h3>把性能下降拆成两个根因</h3>
+                <p>
+                  作者把 performance gap 归因到 dynamics model mismatch 和 policy mismatch。
+                  这让“该更新谁”从经验选择变成可估计的在线决策。
+                </p>
+              </div>
+              <div>
+                <span>Innovation 2</span>
+                <h3>Mismatch identification</h3>
+                <p>
+                  用 TV distance 估计当前 world model 的动态预测偏差和 policy 的动作分布偏差，
+                  判断主要瓶颈来自“模拟器”还是“决策者”。
+                </p>
+              </div>
+              <div>
+                <span>Innovation 3</span>
+                <h3>Alignment-driven finetuning</h3>
+                <p>
+                  每一步只更新主要出问题的模块。若 dynamics mismatch 大，修 world model；
+                  若 policy mismatch 大，修 policy。
+                </p>
+              </div>
+              <div>
+                <span>Innovation 4</span>
+                <h3>轻量参数更新</h3>
+                <p>
+                  world model 用 LoRA/NoLa 风格低秩更新，policy 只更新 sub-units 的组合权重，
+                  避免全量微调带来的不稳定和高成本。
+                </p>
+              </div>
+            </div>
+          </section>
+
+          <section id="method" class="section">
+            <h2>方法总览</h2>
+            <figure>
+              <img src="./assets/adawm-figure-2-framework.png" alt="AdaWM framework" />
+              <figcaption>
+                Figure 2：AdaWM 先离线预训练 dynamics model 和 policy；在线新任务中，每个 finetuning step 先识别 mismatch，再选择性微调。
+              </figcaption>
+            </figure>
+            <pre><code>pretraining:
+    offline dataset -> pretrained dynamics model WM_phi
+                    -> pretrained planning policy pi_omega
+
+online finetuning:
+    collect new-task samples
+    estimate dynamics mismatch
+    estimate policy mismatch
+    update only the dominant mismatch side</code></pre>
+
+            <p>
+              AdaWM 采用 DreamerV3 风格世界模型。观察被编码到 latent state，历史信息由 hidden state 保存：
+            </p>
+            <pre><code>z_t ~ q_phi(z_t | h_t, s_t)
+x_t = [h_t, z_t]</code></pre>
+            <p>
+              dynamics model 用当前 model state 和 action 想象未来：
+            </p>
+            <pre><code>x_{t+1} ~ WM_phi(x_{t+1} | x_t, a_t)</code></pre>
+            <p>
+              policy 在 world model 的 latent state 上做动作选择：
+            </p>
+            <pre><code>a_t ~ pi_omega(a_t | x_t)</code></pre>
+          </section>
+
+          <section id="gap" class="section">
+            <h2>理论拆解：性能为什么会掉</h2>
+            <p>
+              论文把从预训练任务迁移到新任务后的性能下降写成：
+            </p>
+            <pre><code>eta - eta_hat
+= E_{x~rho_0}[ V^pi_{WM(P)}(x) - V^pi_{WM(P_hat)}(x) ]</code></pre>
+            <p>
+              预测误差进一步分成两项：
+            </p>
+            <pre><code>epsilon_k = (x_k - x_bar_k) + (x_bar_k - x_hat_k)</code></pre>
+            <ul>
+              <li><strong>x_k - x_bar_k：</strong>新任务和预训练任务之间的 distribution shift。</li>
+              <li><strong>x_bar_k - x_hat_k：</strong>预训练 dynamics/RNN 在原任务上的泛化误差。</li>
+            </ul>
+            <p>
+              Theorem 1 的上界里有两类核心误差：
+            </p>
+            <pre><code>dynamics model mismatch: E_max, E_P_hat
+policy mismatch: E_pi</code></pre>
+            <p>
+              这就是 AdaWM 决策规则的来源：如果性能下降主要来自 dynamics model，就修 world model；如果主要来自 policy，就修 policy。
+            </p>
+          </section>
+
+          <section id="finetune" class="section">
+            <h2>AdaWM 具体怎么微调</h2>
+            <p>
+              每个在线 finetuning step，AdaWM 用当前 policy 与环境交互，收集新任务样本：
+            </p>
+            <pre><code>W = {(x, a, r)}</code></pre>
+            <p>
+              同时保留预训练 replay buffer：
+            </p>
+            <pre><code>B = pretraining replay buffer</code></pre>
+
+            <h3>Step 1：估计 dynamics mismatch</h3>
+            <p>
+              dynamics mismatch 衡量 world model 对新任务状态转移预测是否可靠：
+            </p>
+            <pre><code>M_model = D_TV(P | P_hat)</code></pre>
+            <p>
+              直觉上，如果真实状态转移和 world model 预测出来的状态转移差很远，就说明“模拟器看错了世界”。
+            </p>
+
+            <h3>Step 2：估计 policy mismatch</h3>
+            <p>
+              policy mismatch 衡量当前 policy 和预训练 policy / 新任务需要的动作分布差异：
+            </p>
+            <pre><code>M_policy = D_TV(pi_t | pi_omega)</code></pre>
+            <p>
+              如果这个距离大，说明 dynamics 可能还可以，但“决策者不会开这个新任务”。
+            </p>
+
+            <h3>Step 3：选择更新谁</h3>
+            <pre><code>if D_TV(P | P_hat) > C * D_TV(pi_t | pi_omega):
+    update dynamics model
+else:
+    update policy</code></pre>
+            <p>
+              C 是阈值。C 越大，越不容易触发 model update，系统越偏向 policy update；
+              C 越小，越容易判断为 dynamics mismatch 大。
+            </p>
+
+            <h3>Step 4-A：更新 world model</h3>
+            <p>
+              如果 dynamics mismatch 大，AdaWM 不全量更新 world model，而是做低秩更新：
+            </p>
+            <pre><code>phi = (B Z)^T Phi
+phi' = (B' Z)^T Phi</code></pre>
+            <p>
+              微调时只更新 B。可以理解为：冻结大部分 world model 参数，只调整少量 low-rank adaptation weights。
+            </p>
+
+            <h3>Step 4-B：更新 policy</h3>
+            <p>
+              如果 policy mismatch 大，policy 也不是全量更新。论文把 policy network 写成多个 sub-units 的凸组合：
+            </p>
+            <pre><code>omega = sum_i delta_i * omega_i
+omega = Delta^T Omega</code></pre>
+            <p>
+              微调时只更新组合权重：
+            </p>
+            <pre><code>Delta -> Delta'</code></pre>
+            <p>
+              直觉上，预训练 policy 已经学到一组驾驶技能子模块，新任务只需要重新组合这些技能。
+            </p>
+          </section>
+
+          <section id="collab" class="section">
+            <h2>World Model 和 Policy 怎么协同</h2>
+            <p>
+              AdaWM 里的 world model 是“脑内模拟器”，policy 是“决策者”。训练 policy 时，不是每一步都去真实环境试错，而是在 world model 里 imagination rollout：
+            </p>
+            <pre><code>x_t
+  -> policy picks a_t
+  -> world model predicts x_{t+1}, r_t
+  -> policy picks a_{t+1}
+  -> world model predicts x_{t+2}, r_{t+1}
+  -> repeat K steps</code></pre>
+            <p>
+              policy 最大化 imagined return：
+            </p>
+            <pre><code>V^pi_WM(x_t)
+= E[ sum_{i=1}^K gamma^i r(x_{t+i-1}, a_{t+i-1})
+     + gamma^K Q(x_{t+K}, a_{t+K}) ]</code></pre>
+            <p>
+              协同会出问题，是因为 policy 依赖 world model 的想象未来。如果 world model 对新任务预测错了，
+              policy 即使在想象中学得很好，也会在真实环境里失败。反过来，如果 world model 预测准确但 policy 不会让行、减速或转弯，也会失败。
+            </p>
+            <div class="callout">
+              <strong>一句话记忆</strong>
+              <p>
+                AdaWM 在线微调时不断检查到底是“模拟器错了”还是“决策者错了”，然后只修主要出问题的那一方。
+              </p>
+            </div>
+          </section>
+
+          <section id="experiments" class="section">
+            <h2>实验结果</h2>
+            <div class="metric-grid">
+              <div><span>场景</span><strong>CARLA</strong></div>
+              <div><span>预训练</span><strong>12h / V100</strong></div>
+              <div><span>微调</span><strong>1h / V100</strong></div>
+              <div><span>观察</span><strong>128x128 BEV</strong></div>
+              <div><span>指标</span><strong>SR / TTC</strong></div>
+            </div>
+            <p>
+              预训练任务是 Pre-RTM03：Town03 中等车流右转。主测试任务包括 roundabout、不同 Town 密集右转、左转和密集左转。
+            </p>
+            <table>
+              <thead>
+                <tr>
+                  <th>任务</th>
+                  <th>DreamerV3 SR</th>
+                  <th>AdaWM SR</th>
+                  <th>AdaWM TTC</th>
+                  <th>说明</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr class="highlight"><td>ROM03</td><td>0.40</td><td>0.82</td><td>2.05</td><td>Roundabout，中等车流，同 Town</td></tr>
+                <tr><td>RTD12</td><td>0.32</td><td>0.66</td><td>1.25</td><td>右转，密集车流，新 Town</td></tr>
+                <tr><td>LTM03</td><td>0.28</td><td>0.72</td><td>1.32</td><td>左转，中等车流，同 Town</td></tr>
+                <tr><td>LTD03</td><td>0.35</td><td>0.70</td><td>1.92</td><td>左转，密集车流，最难主任务</td></tr>
+              </tbody>
+            </table>
+            <figure>
+              <img src="./assets/adawm-figure-3-learning-curves.png" alt="AdaWM learning curves across tasks" />
+              <figcaption>
+                Figure 3：AdaWM 在四个新任务中恢复更快、更稳定；model-only 和 policy-only 在不同任务上各有短板。
+              </figcaption>
+            </figure>
+          </section>
+
+          <section id="ablations" class="section">
+            <h2>策略对比与消融</h2>
+            <table>
+              <thead>
+                <tr>
+                  <th>方法</th>
+                  <th>ROM03 SR</th>
+                  <th>RTD12 SR</th>
+                  <th>LTM03 SR</th>
+                  <th>LTD03 SR</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr><td>No finetuning</td><td>0.40</td><td>0.32</td><td>0.28</td><td>0.35</td></tr>
+                <tr><td>Policy-only</td><td>0.72</td><td>0.63</td><td>0.61</td><td>0.61</td></tr>
+                <tr><td>Model-only</td><td>0.60</td><td>0.48</td><td>0.68</td><td>0.63</td></tr>
+                <tr><td>Model+Policy</td><td>0.52</td><td>0.50</td><td>0.60</td><td>0.58</td></tr>
+                <tr class="highlight"><td>AdaWM</td><td>0.82</td><td>0.66</td><td>0.72</td><td>0.70</td></tr>
+              </tbody>
+            </table>
+            <figure>
+              <img src="./assets/adawm-figure-4-mismatches.png" alt="Dynamics model and policy mismatches during finetuning" />
+              <figcaption>
+                Figure 4：model-only 会放大 policy mismatch，policy-only 会放大 dynamics mismatch；AdaWM 更能同时控制两种偏差。
+              </figcaption>
+            </figure>
+            <p>
+              参数 C 的消融显示，C 太大时方法退化得更像 policy-only；C 太小时也可能次优。论文主表中 C=5 或 C=10 整体较稳，
+              且在 2 到 50 的范围内表现相对鲁棒。
+            </p>
+          </section>
+
+          <section id="extra" class="section">
+            <h2>补充场景</h2>
+            <p>
+              附录还测试了 highway cut-in、highway exit、yield to emergency vehicle、blocked intersection、
+              vehicle turning route pedestrian 等场景，AdaWM 仍然优于 DreamerV3。
+            </p>
+            <table>
+              <thead>
+                <tr>
+                  <th>任务</th>
+                  <th>DreamerV3 SR</th>
+                  <th>AdaWM SR</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr><td>HC13</td><td>0.33</td><td>0.73</td></tr>
+                <tr><td>HE12</td><td>0.52</td><td>0.89</td></tr>
+                <tr><td>YE12</td><td>0.15</td><td>0.52</td></tr>
+                <tr><td>BI12</td><td>0.42</td><td>0.59</td></tr>
+                <tr><td>VT11</td><td>0.58</td><td>0.88</td></tr>
+              </tbody>
+            </table>
+          </section>
+
+          <section id="limits" class="section">
+            <h2>局限与疑问</h2>
+            <ul>
+              <li><strong>输入不是 raw camera：</strong>实验使用 128x128 BEV semantic segmentation，更偏 RL/planning 层 world model。</li>
+              <li><strong>真实部署距离远：</strong>任务都在 CARLA/Bench2Drive 分布内，sim-to-real 与真实在线安全约束没有解决。</li>
+              <li><strong>TV distance 估计难：</strong>仿真中较容易拿到分布差异，真实车端如何稳定估计是难点。</li>
+              <li><strong>理论假设较强：</strong>Lipschitz、TV bound、RNN generalization 等主要是设计指导，不是现实驾驶保证。</li>
+              <li><strong>baseline 不完全同类：</strong>VAD/UniAD 是监督学习闭环模型，论文没有对它们做同样 online finetuning。</li>
+            </ul>
+          </section>
+
+          <section id="takeaways" class="section">
+            <h2>对 AD World Model 的启发</h2>
+            <p>
+              AdaWM 最值得借鉴的是诊断视角：新场景开不好，不一定只是 policy 不会开，也可能是 world model 对新动态预测错。
+              自动驾驶 world model 系统应该有能力回答：
+            </p>
+            <pre><code>当前失败主要来自 dynamics mismatch 还是 policy mismatch？</code></pre>
+            <p>
+              和前面读过的 LeWorldModel、Drive-OccWorld 放在一起看，脉络很清楚：
+              LeWorldModel 关心 latent world model 如何稳定训练；Drive-OccWorld 关心未来状态用 occupancy 表达后如何规划；
+              AdaWM 关心预训练 world model 和 policy 到新任务后如何在线适应。
+            </p>
+          </section>
+        </article>
+      </div>
+    </main>
+  </body>
+</html>
