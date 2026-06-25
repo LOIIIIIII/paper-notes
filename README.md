@@ -19,6 +19,8 @@
 | CoWorld-VLA 多专家 Latent CoT 论文笔记 | [GitHub Pages](https://loiiiiiii.github.io/paper-notes/coworld-vla.html) | [论文笔记 Markdown](./papers/CoWorld-VLA/CoWorld-VLA论文笔记.md), [HTML 页面](./coworld-vla.html) |
 | UniTrans 异构协同感知特征翻译论文笔记 | [GitHub Pages](https://loiiiiiii.github.io/paper-notes/unitrans.html) | [论文笔记 Markdown](./papers/UniTrans/UniTrans论文笔记.md), [HTML 页面](./unitrans.html) |
 | DriveVLA-W0 世界模型增强 VLA scaling 论文笔记 | [GitHub Pages](https://loiiiiiii.github.io/paper-notes/drivevla-w0.html) | [论文笔记 Markdown](./papers/DriveVLA-W0/DriveVLA-W0论文笔记.md), [HTML 页面](./drivevla-w0.html) |
+| LMGenDrive 理解-生成统一闭环驾驶笔记 | [GitHub Pages](https://loiiiiiii.github.io/paper-notes/lmgendrive.html) | [论文笔记 Markdown](./papers/LMGenDrive/LMGenDrive论文笔记.md), [HTML 页面](./lmgendrive.html) |
+| UNICST next-scale 4D 世界生成笔记 | [GitHub Pages](https://loiiiiiii.github.io/paper-notes/unicst.html) | [论文笔记 Markdown](./papers/UNICST/UNICST论文笔记.md), [HTML 页面](./unicst.html) |
 | MapAgent2CARLA 多智能体地图生成框架 | [GitHub Pages](https://loiiiiiii.github.io/paper-notes/mapagent2carla.html) | [框架 Markdown](./docs/mapagent2carla-framework.md), [博客 Markdown](./_posts/2026-06-09-mapagent2carla.md), [HTML 页面](./mapagent2carla.html) |
 
 > GitHub Pages 更新可能有几十秒到几分钟延迟。如果在线页面暂时没刷新，可以先看仓库里的 HTML / Markdown 源文件。
@@ -50,3 +52,7 @@ CoWorld-VLA 的核心思想是：把 VLA 的中间推理从文本 CoT 改成 sem
 UniTrans 的核心思想是：先学习 modality-intrinsic latent space 描述不同中间特征的模态风格，再根据 source-target 模态关系动态组合 Translator Parameter Bank，实现无需重训的 zero-shot any-to-any feature translation。
 
 DriveVLA-W0 的核心思想是：把自动驾驶 VLA 的瓶颈定义为 supervision deficit，并用 future visual world modeling 提供密集自监督，让大规模数据真正转化为更强的动态世界表征和规划能力。
+
+LMGenDrive 的核心思想是：把 LLM 指令理解和 generative video world model 放进同一个闭环驾驶框架，用 world query/action query 解耦未来视频生成与动作输出；但它和 DriveVLA-W0 一样，本质上主要把 world modeling 当成 dense supervision。
+
+UNICST 的核心思想是：把多视角多帧驾驶视频放进统一连续 4D latent space，用 next-scale prediction 按尺度从粗到细生成，并通过 scale/spatial/temporal 解耦 attention 提升多视角一致性、时序连贯性和推理速度。

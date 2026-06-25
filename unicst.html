@@ -1,0 +1,392 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>UNICST 论文精读笔记</title>
+    <meta
+      name="description"
+      content="UNICST: Next-scale Latent Prediction for Continuous Spatio-Temporal World Modeling 中文论文精读笔记。"
+    />
+    <link rel="stylesheet" href="./styles.css" />
+    <style>
+      .theme-unicst .metric-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+        gap: 14px;
+        margin: 24px 0;
+      }
+      .theme-unicst .metric-card {
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        background: #fff;
+        padding: 16px;
+      }
+      .theme-unicst .metric-card span {
+        display: block;
+        color: var(--muted);
+        font-size: 0.86rem;
+        margin-bottom: 8px;
+      }
+      .theme-unicst .metric-card strong {
+        display: block;
+        color: var(--ink);
+        font-size: 1.45rem;
+        line-height: 1.1;
+      }
+      .theme-unicst .metric-card small {
+        display: block;
+        color: var(--muted);
+        margin-top: 8px;
+      }
+      .theme-unicst .compare-table td,
+      .theme-unicst .compare-table th {
+        vertical-align: top;
+      }
+      @media (max-width: 700px) {
+        .theme-unicst pre {
+          white-space: pre-wrap;
+          word-break: break-word;
+        }
+        .theme-unicst table {
+          display: block;
+          overflow-x: auto;
+          white-space: nowrap;
+        }
+      }
+    </style>
+  </head>
+  <body class="theme-unicst">
+    <header class="site-header">
+      <nav class="nav">
+        <a class="brand" href="./unicst.html">UNICST 笔记</a>
+        <div class="nav-links">
+          <a href="./index.html">首页</a>
+          <a href="./lmgendrive.html">LMGenDrive</a>
+          <a href="./drivevla-w0.html">DriveVLA-W0</a>
+          <a href="#problem">问题</a>
+          <a href="#method">方法</a>
+          <a href="#scale">尺度</a>
+          <a href="#experiments">实验</a>
+          <a href="#limits">局限</a>
+        </div>
+      </nav>
+    </header>
+
+    <main>
+      <section class="hero">
+        <div class="hero-inner">
+          <p class="eyebrow">Next-scale Prediction / 4D Latent World Model / Multi-view Video</p>
+          <h1>UNICST 精读笔记</h1>
+          <p class="hero-summary">
+            UNICST 把多视角多帧驾驶视频放进统一连续 4D latent space，用 next-scale prediction 从粗到细生成视频。
+            它的重点不是 LLM 或规划策略，而是更快、更一致、更可控的 4D 多视角世界生成 backbone。
+          </p>
+          <div class="meta-grid">
+            <div>
+              <span>论文标题</span>
+              <strong>UNICST: Next-scale Latent Prediction for Continuous Spatio-Temporal World Modeling</strong>
+            </div>
+            <div>
+              <span>来源与对象</span>
+              <strong>ICCV 2025 submission，本地 PDF 与阅读问答整理</strong>
+            </div>
+            <div>
+              <span>关键词</span>
+              <strong>Next-scale AR · Plücker Ray · Scale-Spatial-Temporal Blocks · nuScenes · nuPlan</strong>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <div class="layout">
+        <aside class="toc" aria-label="目录">
+          <a href="#summary">一句话</a>
+          <a href="#problem">问题意识</a>
+          <a href="#innovation">创新点</a>
+          <a href="#scale">尺度是什么</a>
+          <a href="#method">方法总览</a>
+          <a href="#ray">4D Ray 表示</a>
+          <a href="#sst">SST Blocks</a>
+          <a href="#planning">Action Token</a>
+          <a href="#experiments">实验</a>
+          <a href="#ablations">消融</a>
+          <a href="#limits">局限</a>
+          <a href="#takeaways">启发</a>
+        </aside>
+
+        <article class="article">
+          <section id="summary" class="section lead-section">
+            <h2>一句话总结</h2>
+            <p class="lead">
+              UNICST 的核心贡献是把驾驶世界视频表示成 scale、spatial/view、temporal 三类依赖解耦的连续 4D latent hierarchy，
+              用 next-scale autoregressive prediction 在较高速度下生成多视角、多帧、几何一致的视频。
+            </p>
+          </section>
+
+          <section id="problem" class="section">
+            <h2>论文要解决的问题</h2>
+            <p>
+              自动驾驶世界模型需要同时满足视觉真实、多视角一致、时间连续、可控生成和快速推理。
+              现有 diffusion 视频模型质量不错但推理慢；显式 3D 条件方法依赖 HD map、3D box、depth、occupancy 或 LiDAR，预处理和标注成本高；
+              直接把视频 token 拉平成序列的 autoregressive 方法又会破坏空间结构并带来巨大复杂度。
+            </p>
+            <figure>
+              <img src="./assets/unicst-figure-1-capabilities.png" alt="UNICST 可控多视角世界生成示例" />
+              <figcaption>
+                Figure 1：UNICST 支持文本、camera rotation、camera shift、3D bounding box、单视角补多视角等条件控制。
+              </figcaption>
+            </figure>
+          </section>
+
+          <section id="innovation" class="section">
+            <h2>创新点怎么理解</h2>
+            <div class="innovation-grid">
+              <div>
+                <span>Innovation 1</span>
+                <h3>Next-scale 多视角视频生成</h3>
+                <p>
+                  不按 token 逐个生成，而按分辨率尺度从粗到细生成。每个尺度内 token 可并行，速度比 diffusion 更适合交互式世界模拟。
+                </p>
+              </div>
+              <div>
+                <span>Innovation 2</span>
+                <h3>统一连续 4D world space</h3>
+                <p>
+                  用 Plücker ray embedding、camera pose、ego motion 和 time，把不同视角与时间的 token 放入同一个 3D+time 坐标系。
+                </p>
+              </div>
+              <div>
+                <span>Innovation 3</span>
+                <h3>Scale-Spatial-Temporal 解耦</h3>
+                <p>
+                  scale attention 负责粗到细，spatial attention 负责跨视角一致，temporal attention 负责历史连续性，避免全 attention 的高成本。
+                </p>
+              </div>
+              <div>
+                <span>Innovation 4</span>
+                <h3>灵活条件输入</h3>
+                <p>
+                  文本、object boxes、partial views、partial frames、camera pose 和 ego motion 都可作为条件注入，减少固定传感器拓扑假设。
+                </p>
+              </div>
+            </div>
+          </section>
+
+          <section id="scale" class="section">
+            <h2>这里的“尺度”到底是什么</h2>
+            <p>
+              UNICST 里的 scale 不是多个视角，也不是未来帧，而是同一张图像或视频帧在 latent token 空间里的不同分辨率层级。
+              可以理解成从全局粗结构到局部细节的 coarse-to-fine hierarchy。
+            </p>
+            <pre><code>scale 1: 低分辨率 token map，负责全局布局
+scale 2: 中等分辨率 token map，补充结构
+...
+scale K: 高分辨率 token map，补充视觉细节</code></pre>
+            <table class="compare-table">
+              <thead>
+                <tr>
+                  <th>维度</th>
+                  <th>在 UNICST 中的含义</th>
+                  <th>回答的问题</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>Scale</td>
+                  <td>同一图像的多分辨率 latent token 层级</td>
+                  <td>这张图生成到多细</td>
+                </tr>
+                <tr>
+                  <td>Spatial / View</td>
+                  <td>同一时间下的不同相机视角</td>
+                  <td>这是哪个相机，跨视角是否一致</td>
+                </tr>
+                <tr>
+                  <td>Temporal</td>
+                  <td>不同历史或未来时间帧</td>
+                  <td>这是哪一帧，时间上是否连续</td>
+                </tr>
+              </tbody>
+            </table>
+          </section>
+
+          <section id="method" class="section">
+            <h2>方法总览</h2>
+            <figure>
+              <img src="./assets/unicst-figure-2-overview.png" alt="UNICST 总体架构图" />
+              <figcaption>
+                Figure 2：multi-scale tokenizer 将多视角多帧视频转成 scale-spatial-temporal tokens，SST blocks 再注入多类条件并生成未来视频。
+              </figcaption>
+            </figure>
+            <pre><code>multi-view multi-frame video
+        ↓
+multi-scale tokenizer
+        ↓
+scale-spatial-temporal tokens
+        ↓
+SST blocks
+        ↓
+next-scale latent prediction
+        ↓
+multi-scale decoder
+        ↓
+generated multi-view video</code></pre>
+            <p>单图 next-scale likelihood：</p>
+            <pre><code>p(R_1, R_2, ..., R_K) = Π_k p(R_k | R_1, R_2, ..., R_{k-1})</code></pre>
+            <p>扩展到多视角多帧后，论文进一步把依赖解耦成：</p>
+            <pre><code>p(R_{v0,t0}^{1:K}) =
+Π_k p(R_{v0,t0}^k | R_{v0,t0}^{1:k-1}, R_{v≠v0,t0}^k, R_{v0,1:t0-1}^k)</code></pre>
+          </section>
+
+          <section id="ray" class="section">
+            <h2>统一 4D Ray 表示</h2>
+            <figure>
+              <img src="./assets/unicst-figure-3-ray.png" alt="UNICST 3D Plücker ray embedding" />
+              <figcaption>
+                Figure 3：相机内外参把每个视觉 token 提升到连续 3D ray，再附加时间，得到 3D+time 的统一表示。
+              </figcaption>
+            </figure>
+            <p>
+              每个 image token 不再只是二维 patch index，而是通过相机内外参对应到 3D 空间中的一条射线，并附加时间维度。
+              这样不同相机或不同时间看到同一个物理点时，模型更容易在 latent space 中建立对应关系。
+            </p>
+            <pre><code>p_{k,j}^{cam} = (u_j * d_j * s_k^w, v_j * d_j * s_k^h, d_j, 1)
+p_{k,j}^{v,0} = K_v^{-1} p_{k,j}^{cam}
+p_{k,j}^{v,t} = T_{v,t} p_{k,j}^{v,0}
+position embedding = (p_{k,j}^{v,t}, t)</code></pre>
+          </section>
+
+          <section id="sst" class="section">
+            <h2>Scale-Spatial-Temporal Blocks</h2>
+            <p>
+              论文没有让所有 token 做全 attention，而是拆成 scale、spatial、temporal 三条依赖。
+            </p>
+            <pre><code>scale reliance:
+R_{v0,t0}^{1:k-1}
+同一图像低尺度生成高尺度
+
+spatial reliance:
+R_{v≠v0,t0}^k
+同一时间同一尺度下看其他相机视角
+
+temporal reliance:
+R_{v0,1:t0-1}^k
+同一视角同一尺度下看历史帧</code></pre>
+            <p>Spatial condition：</p>
+            <pre><code>R_{k,out}^{v,t} = R_{k,in}^{v,t} + Masked-SA(R_{k,in}^{v,t}, R_{k,in}^{1:V,t})</code></pre>
+            <p>Temporal condition：</p>
+            <pre><code>R_{k,out}^{v,t} = R_{k,in}^{v,t} + Masked-SA(R_{k,in}^{v,t}, R_{k,in}^{v,1:t-1})</code></pre>
+          </section>
+
+          <section id="planning" class="section">
+            <h2>Action Token 与 Motion Planning</h2>
+            <p>
+              UNICST 也加入了 action token：在每一帧最高尺度后加入一个 learnable action token，
+              让它看当前最高尺度视觉 tokens 和历史 action tokens，最后用 classification head 预测未来 ego trajectory cluster。
+            </p>
+            <pre><code>r_{act,out}^t = r_{act,in}^t + Masked-SA(r_{act,in}^t, R_{K,in}^{1:V,t})
+r_{act,out}^t = r_{act,in}^t + Masked-SA(r_{act,in}^t, r_{act,in}^{1:t-1})</code></pre>
+            <p>
+              不过这篇的核心实验仍是 FID/FVD/FPS 生成质量与效率，不是闭环规划 SOTA。
+            </p>
+          </section>
+
+          <section id="experiments" class="section">
+            <h2>实验结果</h2>
+            <p>
+              训练数据来自 nuScenes 与 nuPlan，按 ScenarioNet 切成 20 秒序列；总训练约 59.5 小时，验证为 nuScenes 0.8 小时。
+              3B 模型先在 192×336 训练，再在 384×672 high resolution finetune。
+            </p>
+            <div class="metric-grid">
+              <div class="metric-card">
+                <span>Single-view FID</span>
+                <strong>4.5</strong>
+                <small>60h public data；Vista 6.9，DrivingWorld 7.4</small>
+              </div>
+              <div class="metric-card">
+                <span>Multi-view FID</span>
+                <strong>14.5</strong>
+                <small>Panacea 17.0，MagicDrive 16.2</small>
+              </div>
+              <div class="metric-card">
+                <span>Multi-view FVD</span>
+                <strong>134</strong>
+                <small>DriveDreamer 341，DrivingDiffusion 332，Panacea 139</small>
+              </div>
+              <div class="metric-card">
+                <span>Throughput</span>
+                <strong>2.17</strong>
+                <small>images/s；MagicDrive 1.76，DriveDreamer 0.37</small>
+              </div>
+            </div>
+            <figure>
+              <img src="./assets/unicst-figure-4-qualitative.png" alt="UNICST 定性生成结果" />
+              <figcaption>
+                Figure 4：定性结果展示了天气、视角、单视角补全、多视角一致与 object fidelity 等能力。
+              </figcaption>
+            </figure>
+          </section>
+
+          <section id="ablations" class="section">
+            <h2>消融实验</h2>
+            <table>
+              <thead>
+                <tr>
+                  <th>消融项</th>
+                  <th>设置</th>
+                  <th>FID</th>
+                  <th>FVD</th>
+                  <th>结论</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>View embedding</td>
+                  <td>None / Learnable / Ray</td>
+                  <td>24.7 / 23.4 / 21.7</td>
+                  <td>280.5 / 248.8 / 240.8</td>
+                  <td>Ray embedding 最好，说明真实几何坐标比相机 ID 更有效</td>
+                </tr>
+                <tr>
+                  <td>Time embedding</td>
+                  <td>None / Learnable / Continuous</td>
+                  <td>23.2 / 25.1 / 21.7</td>
+                  <td>257.7 / 261.3 / 240.8</td>
+                  <td>连续时间表示更适合不同帧率和随机时间间隔</td>
+                </tr>
+                <tr>
+                  <td>Spatial / Temporal</td>
+                  <td>T only / S only / S+T</td>
+                  <td>26.0 / 21.9 / 21.7</td>
+                  <td>247.8 / 270.3 / 240.8</td>
+                  <td>spatial 主要保多视角质量，temporal 主要保视频连贯</td>
+                </tr>
+              </tbody>
+            </table>
+          </section>
+
+          <section id="limits" class="section">
+            <h2>局限与疑问</h2>
+            <ul>
+              <li><strong>主要证明生成：</strong>虽然有 action token，但核心证据是 FID/FVD/FPS，不是闭环规划指标。</li>
+              <li><strong>FID/FVD 不等于物理正确：</strong>它们不能充分证明交通规则、交互因果和碰撞风险合理。</li>
+              <li><strong>训练成本仍高：</strong>3B 模型、64 A100、高分辨率 finetune，训练不算轻量。</li>
+              <li><strong>minimal inductive bias 有包装成分：</strong>Plücker ray、camera pose、ego motion 本身就是几何先验；更准确说是减少固定传感器拓扑偏置。</li>
+              <li><strong>匿名投稿版本：</strong>PDF 标注 ICCV 2025 confidential review copy，引用时应核查公开版本。</li>
+            </ul>
+          </section>
+
+          <section id="takeaways" class="section">
+            <h2>值得带走的启发</h2>
+            <p>
+              UNICST 的价值在于给 driving world generation 提供了一个可扩展 backbone：
+              多视角一致性来自连续 4D ray space，时序一致性来自 causal temporal condition，速度来自 next-scale coarse-to-fine latent prediction。
+              如果后续把这种生成 backbone 和规划策略更强地闭环耦合，才更接近真正的 world model for control。
+            </p>
+          </section>
+        </article>
+      </div>
+    </main>
+  </body>
+</html>

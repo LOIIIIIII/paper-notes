@@ -26,6 +26,8 @@
           <a href="./coworld-vla.html">CoWorld-VLA</a>
           <a href="./unitrans.html">UniTrans</a>
           <a href="./drivevla-w0.html">DriveVLA-W0</a>
+          <a href="./lmgendrive.html">LMGenDrive</a>
+          <a href="./unicst.html">UNICST</a>
           <a href="./mapagent2carla.html">MapAgent2CARLA</a>
           <a href="#problem">问题</a>
           <a href="#innovation">创新</a>
@@ -88,6 +90,23 @@
               这些 future visual embeddings 先隐式进入 planning token，再显式进入 trajectory refiner，
               最终提升 closed-loop driving performance。
             </p>
+          </section>
+
+
+          <section id="new-world-models" class="section">
+            <h2>新增 World Model 笔记</h2>
+            <div class="innovation-grid">
+              <div>
+                <span>LMGenDrive</span>
+                <h3><a href="./lmgendrive.html">理解与生成统一的 LLM driving</a></h3>
+                <p>用 action query 输出 waypoint，用 world query 条件化未来多视角视频生成；重点讨论它和 DriveVLA-W0 的 dense supervision 重合与差异。</p>
+              </div>
+              <div>
+                <span>UNICST</span>
+                <h3><a href="./unicst.html">Next-scale 4D 世界生成</a></h3>
+                <p>解释 scale 不是视角也不是未来帧，而是 latent 分辨率层级；方法核心是 4D ray embedding 与 scale/spatial/temporal 解耦。</p>
+              </div>
+            </div>
           </section>
 
           <section id="problem" class="section">
