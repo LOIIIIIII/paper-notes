@@ -21,6 +21,7 @@
 | DriveVLA-W0 世界模型增强 VLA scaling 论文笔记 | [GitHub Pages](https://loiiiiiii.github.io/paper-notes/drivevla-w0.html) | [论文笔记 Markdown](./papers/DriveVLA-W0/DriveVLA-W0论文笔记.md), [HTML 页面](./drivevla-w0.html) |
 | LMGenDrive 理解-生成统一闭环驾驶笔记 | [GitHub Pages](https://loiiiiiii.github.io/paper-notes/lmgendrive.html) | [论文笔记 Markdown](./papers/LMGenDrive/LMGenDrive论文笔记.md), [HTML 页面](./lmgendrive.html) |
 | UNICST next-scale 4D 世界生成笔记 | [GitHub Pages](https://loiiiiiii.github.io/paper-notes/unicst.html) | [论文笔记 Markdown](./papers/UNICST/UNICST论文笔记.md), [HTML 页面](./unicst.html) |
+| LaCT 大块 TTT 长上下文记忆笔记 | [GitHub Pages](https://loiiiiiii.github.io/paper-notes/lact.html) | [论文笔记 Markdown](./papers/LaCT/LaCT论文笔记.md), [HTML 页面](./lact.html) |
 | MapAgent2CARLA 多智能体地图生成框架 | [GitHub Pages](https://loiiiiiii.github.io/paper-notes/mapagent2carla.html) | [框架 Markdown](./docs/mapagent2carla-framework.md), [博客 Markdown](./_posts/2026-06-09-mapagent2carla.md), [HTML 页面](./mapagent2carla.html) |
 
 > GitHub Pages 更新可能有几十秒到几分钟延迟。如果在线页面暂时没刷新，可以先看仓库里的 HTML / Markdown 源文件。
@@ -56,3 +57,5 @@ DriveVLA-W0 的核心思想是：把自动驾驶 VLA 的瓶颈定义为 supervis
 LMGenDrive 的核心思想是：把 LLM 指令理解和 generative video world model 放进同一个闭环驾驶框架，用 world query/action query 解耦未来视频生成与动作输出；但它和 DriveVLA-W0 一样，本质上主要把 world modeling 当成 dense supervision。
 
 UNICST 的核心思想是：把多视角多帧驾驶视频放进统一连续 4D latent space，用 next-scale prediction 按尺度从粗到细生成，并通过 scale/spatial/temporal 解耦 attention 提升多视角一致性、时序连贯性和推理速度。
+
+LaCT 的核心思想是：不改变 TTT 通过快速权重存储记忆的原理，而是把小批量频繁更新改成 2K–1M token 的大块聚合更新，让更大的非线性记忆、复杂更新算法、上下文并行和多模态读写调度同时变得可行。

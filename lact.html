@@ -1,0 +1,532 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>LaCT 论文精读笔记</title>
+    <meta
+      name="description"
+      content="LaCT: Test-Time Training Done Right 中文论文精读笔记，整理大块 TTT、Update/Apply 解耦、非线性快速权重、窗口注意力、上下文并行与跨模态实验。"
+    />
+    <link rel="stylesheet" href="./styles.css" />
+    <style>
+      .theme-lact {
+        --ink: #171f2a;
+        --muted: #687384;
+        --line: #d9e1ea;
+        --paper: #fbfcfd;
+        --soft: #eef5f7;
+        --accent: #0b6f78;
+        --accent-2: #9a5b12;
+        --code: #f2f6f8;
+        --hero-start: #f2fafb;
+        --hero-end: #fbfcfd;
+        --header-bg: rgba(251, 252, 253, 0.92);
+        --shadow: 0 18px 50px rgba(19, 54, 70, 0.09);
+      }
+
+      .theme-lact .metric-grid {
+        grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+      }
+
+      .theme-lact .metric-grid div strong {
+        color: var(--accent);
+        font-size: 28px;
+      }
+
+      .theme-lact .formula-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 14px;
+        margin: 22px 0;
+      }
+
+      .theme-lact .formula-card {
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: #fff;
+        padding: 16px;
+        box-shadow: var(--shadow);
+      }
+
+      .theme-lact .formula-card span {
+        display: block;
+        margin-bottom: 8px;
+        color: var(--accent);
+        font-size: 13px;
+        font-weight: 750;
+        text-transform: uppercase;
+      }
+
+      .theme-lact .formula-card p {
+        margin-bottom: 0;
+      }
+
+      .theme-lact .note-table td:first-child {
+        width: 118px;
+        color: var(--accent);
+        font-weight: 720;
+      }
+
+      .theme-lact .pill-row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+        margin: 20px 0;
+      }
+
+      .theme-lact .pill-row span {
+        border: 1px solid var(--line);
+        border-radius: 999px;
+        background: #fff;
+        padding: 6px 11px;
+        color: var(--muted);
+        font-size: 14px;
+      }
+
+      .theme-lact .wide-figure img {
+        background: #fff;
+      }
+
+      @media (max-width: 860px) {
+        .theme-lact .formula-grid {
+          grid-template-columns: 1fr;
+        }
+
+        .theme-lact table {
+          display: block;
+          overflow-x: auto;
+          white-space: nowrap;
+        }
+      }
+    </style>
+  </head>
+  <body class="theme-lact">
+    <header class="site-header">
+      <nav class="nav">
+        <a class="brand" href="./lact.html">LaCT 笔记</a>
+        <div class="nav-links">
+          <a href="./index.html">首页</a>
+          <a href="./lmgendrive.html">LMGenDrive</a>
+          <a href="./unicst.html">UNICST</a>
+          <a href="#problem">问题</a>
+          <a href="#innovation">创新</a>
+          <a href="#method">方法</a>
+          <a href="#experiments">实验</a>
+          <a href="#takeaways">启发</a>
+        </div>
+      </nav>
+    </header>
+
+    <main>
+      <section class="hero">
+        <div class="hero-inner">
+          <p class="eyebrow">Test-Time Training / Long Context / Multimodal Sequence Modeling</p>
+          <h1>LaCT 论文精读笔记</h1>
+          <p class="hero-summary">
+            LaCT 没有改变 TTT“通过训练快速权重来存储记忆”的基本原理，而是把传统的小批量频繁更新改成超大块并行更新，
+            让 TTT 真正能高效利用 GPU、扩大记忆容量，并适用于语言、图像和视频等不同模态。
+          </p>
+          <div class="meta-grid">
+            <div>
+              <span>论文标题</span>
+              <strong>Test-Time Training Done Right</strong>
+            </div>
+            <div>
+              <span>来源</span>
+              <strong>arXiv:2505.23884v1，2025-05-29，MIT 与 Adobe Research</strong>
+            </div>
+            <div>
+              <span>关键词</span>
+              <strong>Large-Chunk TTT · Fast Weights · SwiGLU-MLP · Muon · Window Attention</strong>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <div class="layout">
+        <aside class="toc" aria-label="目录">
+          <a href="#summary">一句话</a>
+          <a href="#problem">问题意识</a>
+          <a href="#innovation">五个创新</a>
+          <a href="#method">方法总览</a>
+          <a href="#chunk">大块更新</a>
+          <a href="#state">非线性记忆</a>
+          <a href="#schedule">读写调度</a>
+          <a href="#optimizer">更新算法</a>
+          <a href="#parallel">上下文并行</a>
+          <a href="#comparison">和传统 TTT</a>
+          <a href="#experiments">实验</a>
+          <a href="#limits">局限</a>
+          <a href="#takeaways">启发</a>
+        </aside>
+
+        <article class="article">
+          <section id="summary" class="section lead-section">
+            <h2>一句话总结</h2>
+            <p class="lead">
+              LaCT 的核心不是发明另一种“记忆”机制，而是重新组织 TTT 的计算粒度：
+              用 2K 到 1M token 的大 chunk 聚合梯度、统一更新快速权重，从而把 TTT 从小步在线更新变成硬件友好的长上下文记忆层。
+            </p>
+            <div class="metric-grid">
+              <div><span>Chunk size</span><strong>2K-1M</strong><p>从很小的在线更新变成大块聚合更新。</p></div>
+              <div><span>GPU 利用率</span><strong>up to 70%</strong><p>论文报告可在 A100 上显著提高硬件利用率。</p></div>
+              <div><span>快速权重规模</span><strong>40%</strong><p>最大可达到主模型参数量约 40%。</p></div>
+              <div><span>视频模型</span><strong>14B</strong><p>适配自回归视频扩散模型。</p></div>
+              <div><span>视频长度</span><strong>56K</strong><p>处理最长约 56K visual tokens。</p></div>
+            </div>
+          </section>
+
+          <section id="problem" class="section">
+            <h2>传统 TTT 的瓶颈</h2>
+            <p>
+              原始 TTT 的出发点很漂亮：普通 RNN 把历史压进一个隐藏向量，表达能力有限；那能不能把一个小型神经网络当作隐藏状态，
+              用快速权重 <code>W</code> 直接存储上下文记忆？每来一小段 token，模型就用自监督损失更新快速权重，再用当前 query 读出记忆。
+            </p>
+            <div class="formula-grid">
+              <div class="formula-card">
+                <span>Update</span>
+                <p><code>W_{t+1} = W_t - eta * grad_W L_t</code></p>
+              </div>
+              <div class="formula-card">
+                <span>Apply</span>
+                <p><code>o_t = f_{W_t}(q_t)</code></p>
+              </div>
+            </div>
+            <p>
+              问题在于，早期 TTT 往往每 16 或 64 个 token 就更新一次快速权重。单次矩阵计算太小，GPU 吃不饱；
+              如果把快速权重换成更大的 MLP，又会因为频繁更新造成实现和内存压力。更麻烦的是，小步顺序更新天然偏向一维文本序列，
+              对图像集合、视频网格、多视角输入这类多维数据并不自然。
+            </p>
+            <figure>
+              <img src="./assets/lact-figure-1-scaling.png" alt="LaCT Figure 1 展示大 chunk 提升 GPU 吞吐、状态扩展和训练效率" />
+              <figcaption>
+                Figure 1：大 chunk 提高 GPU throughput，并让更大的 state size 和更高效训练成为可能。
+              </figcaption>
+            </figure>
+            <div class="callout">
+              <strong>关键转向</strong>
+              <p>
+                LaCT 的想法是：与其继续优化很多小更新的内核，不如直接把更新粒度放大，让一次 TTT 更新变成足够大的矩阵计算。
+              </p>
+            </div>
+          </section>
+
+          <section id="innovation" class="section">
+            <h2>五个主要创新点</h2>
+            <div class="innovation-grid">
+              <div>
+                <span>Innovation 1</span>
+                <h3>超大块更新</h3>
+                <p>把快速权重更新单位从几十个 token 扩到数千甚至百万 token，聚合块内梯度后统一更新，显著提高计算密度。</p>
+              </div>
+              <div>
+                <span>Innovation 2</span>
+                <h3>更大非线性记忆</h3>
+                <p>采用 SwiGLU-MLP 作为快速权重函数，并把 state size 扩到此前小块 TTT 难以高效运行的规模。</p>
+              </div>
+              <div>
+                <span>Innovation 3</span>
+                <h3>Update / Apply 解耦</h3>
+                <p>把写入记忆和读取记忆的执行顺序拆开，形成 Full、Block-Wise、Shifted、Strided 等不同依赖模式。</p>
+              </div>
+              <div>
+                <span>Innovation 4</span>
+                <h3>非线性更新 + 窗口注意力</h3>
+                <p>用 L2 normalization 和 Muon 改善快速权重更新稳定性，同时用 window attention 弥补大块内部的局部结构建模。</p>
+              </div>
+              <div>
+                <span>Innovation 5</span>
+                <h3>大块内部上下文并行</h3>
+                <p>同一个大 chunk 可以拆给多张 GPU 分别算梯度，再 all-reduce 聚合，数学上等价于单设备整块计算。</p>
+              </div>
+            </div>
+          </section>
+
+          <section id="method" class="section">
+            <h2>LaCT Block 总览</h2>
+            <p>
+              一个 LaCT block 由三类层组成：window attention 负责块内局部依赖，large-chunk TTT layer 负责把非局部历史压入快速权重，
+              feed-forward layer 负责通道混合。虚线表示快速权重 <code>W</code> 沿时间传递，实线表示当前深度上的信息流。
+            </p>
+            <figure class="wide-figure">
+              <img src="./assets/lact-figure-2-block.png" alt="LaCT block architecture with window attention, large-chunk TTT layer, and feed-forward layer" />
+              <figcaption>
+                Figure 2：LaCT block 把局部 window attention 和大块 TTT memory 组合起来，兼顾局部结构与长距离记忆。
+              </figcaption>
+            </figure>
+            <pre><code>输入 token
+  -> Window Attention      处理 chunk 内局部关系
+  -> Large-Chunk TTT Layer 聚合大块梯度，更新快速权重 W
+  -> Feed-Forward          通道混合
+  -> 输出 token</code></pre>
+          </section>
+
+          <section id="chunk" class="section">
+            <h2>创新一：超大块快速权重更新</h2>
+            <p>
+              传统 TTT 的快速权重在小 mini-batch 上频繁更新；LaCT 则让一个 chunk 内的所有 token 基于同一份快速权重计算损失，
+              然后把梯度相加，再统一执行一次 weight update。
+            </p>
+            <div class="formula-grid">
+              <div class="formula-card">
+                <span>块内聚合梯度</span>
+                <p><code>g = grad_W sum_i eta_i L(f_W(k_i), v_i)</code></p>
+              </div>
+              <div class="formula-card">
+                <span>统一更新</span>
+                <p><code>W_new = weight-update(W, g)</code></p>
+              </div>
+            </div>
+            <p>
+              这个改变看起来像工程优化，但影响的是整个 TTT 的计算组织方式：更大的矩阵乘法、更少的更新次数、更低的调度开销，
+              也让普通 PyTorch 实现能接近硬件友好的计算形态。
+            </p>
+          </section>
+
+          <section id="state" class="section">
+            <h2>创新二：更大、更复杂的非线性记忆</h2>
+            <p>
+              LaCT 不是第一次使用 MLP 快速权重，但它让大型非线性快速权重变得实用。论文使用无 bias 的 SwiGLU-MLP 作为快速权重函数：
+            </p>
+            <pre><code>f_W(x) = W_2 [ SiLU(W_1 x) o (W_3 x) ]</code></pre>
+            <p>
+              相比线性快速权重 <code>f_W(k)=Wk</code>，SwiGLU-MLP 能表示更复杂的 key-value 关联和上下文压缩函数。
+              对长上下文来说，这一点很关键：模型不是把所有历史原样保存，而是把历史压进有限大小的快速权重状态里。
+            </p>
+            <figure>
+              <img src="./assets/lact-figure-8-analysis.png" alt="LaCT Figure 8 nonlinear fast weights and large-chunk recurrence analysis" />
+              <figcaption>
+                Figure 8：非线性快速权重优于线性快速权重；大块 recurrence 与更大的非线性状态结合后超过若干 per-token recurrence baseline。
+              </figcaption>
+            </figure>
+          </section>
+
+          <section id="schedule" class="section">
+            <h2>创新三：Update 和 Apply 解耦</h2>
+            <p>
+              这是 LaCT 适配多模态数据的关键。传统 TTT 更像细粒度在线循环：先更新，再读取，或者按严格时间顺序交替执行。
+              LaCT 则把“写入记忆”和“读取记忆”的调度变成可设计对象。
+            </p>
+            <figure>
+              <img src="./assets/lact-figure-3-schedules.png" alt="LaCT Figure 3 update and apply schedules: full, block-wise, shifted, strided" />
+              <figcaption>
+                Figure 3：不同 Update/Apply 顺序对应不同 attention mask，可表达全局、块级因果、shifted 因果与 strided 因果依赖。
+              </figcaption>
+            </figure>
+            <table class="note-table">
+              <thead>
+                <tr>
+                  <th>模式</th>
+                  <th>信息依赖</th>
+                  <th>适合场景</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>Full</td>
+                  <td>整段序列内的全局依赖。</td>
+                  <td>非因果数据、图像集合或可一次性读取全部上下文的任务。</td>
+                </tr>
+                <tr>
+                  <td>Block-Wise</td>
+                  <td>当前块依赖历史块，块内形成块级因果结构。</td>
+                  <td>长序列的分块建模。</td>
+                </tr>
+                <tr>
+                  <td>Shifted</td>
+                  <td>当前 chunk 先读旧记忆，再写入自己的信息。</td>
+                  <td>自回归语言模型，避免通过 TTT memory 看见当前 chunk 的未来 token。</td>
+                </tr>
+                <tr>
+                  <td>Strided</td>
+                  <td>只选择部分 chunk 写入，之后的 chunk 可读取这些干净状态。</td>
+                  <td>视频扩散：只把已生成的 clean frames 写入记忆，不把 noisy frames 污染历史。</td>
+                </tr>
+              </tbody>
+            </table>
+          </section>
+
+          <section id="optimizer" class="section">
+            <h2>创新四：非线性更新与 Window Attention</h2>
+            <p>
+              快速权重反复累积梯度，容易出现尺度膨胀或更新不稳定。LaCT 在大块更新下可以更方便地尝试更复杂的更新规则：
+            </p>
+            <div class="formula-grid">
+              <div class="formula-card">
+                <span>L2 normalized update</span>
+                <p><code>W_new = L2Normalize(W - g)</code></p>
+              </div>
+              <div class="formula-card">
+                <span>Muon update</span>
+                <p><code>W_new = L2Normalize(W - Muon(g))</code></p>
+              </div>
+            </div>
+            <p>
+              另一方面，大块 TTT 本身更像把一个 chunk 当作集合处理，并不直接保留块内顺序和空间局部性。
+              因此论文加入 window attention：局部关系交给注意力，长距离和非局部历史交给快速权重记忆。
+            </p>
+            <figure>
+              <img src="./assets/lact-figure-7-design.png" alt="LaCT Figure 7 state size scaling and optimizer comparison" />
+              <figcaption>
+                Figure 7：更大 state size、Muon 等更新规则都能带来收益；最大配置的快速权重可达到主模型参数量约 40%。
+              </figcaption>
+            </figure>
+          </section>
+
+          <section id="parallel" class="section">
+            <h2>创新五：大块内部上下文并行</h2>
+            <p>
+              LaCT 的大 chunk 还天然支持沿序列长度做并行。假设一个 chunk 被拆给多张 GPU，每张卡基于同一份快速权重计算局部梯度，
+              最后 all-reduce 求和：
+            </p>
+            <pre><code>g = sum_j g_j</code></pre>
+            <p>
+              因为块内所有 token 都基于同一版本的 <code>W</code>，多设备梯度求和与单设备处理完整 chunk 在数学上等价。
+              这解决了小块 TTT 中强顺序依赖带来的并行困难。
+            </p>
+          </section>
+
+          <section id="comparison" class="section">
+            <h2>LaCT 与传统 TTT 的核心区别</h2>
+            <table>
+              <thead>
+                <tr>
+                  <th>对比维度</th>
+                  <th>传统 TTT</th>
+                  <th>LaCT</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>记忆原理</td>
+                  <td>通过自监督损失更新快速权重。</td>
+                  <td>保留同一原理，把计算粒度改成大 chunk。</td>
+                </tr>
+                <tr>
+                  <td>更新粒度</td>
+                  <td>常见 16-64 token。</td>
+                  <td>2K-1M token。</td>
+                </tr>
+                <tr>
+                  <td>GPU 利用率</td>
+                  <td>论文指出许多现有 TTT 层低于 5% peak FLOPs。</td>
+                  <td>报告可显著提升，NVIDIA A100 上最高约 70%。</td>
+                </tr>
+                <tr>
+                  <td>快速权重结构</td>
+                  <td>线性网络或较小 MLP 更常见。</td>
+                  <td>SwiGLU-MLP，并可扩展到更大 state size。</td>
+                </tr>
+                <tr>
+                  <td>读写依赖</td>
+                  <td>更偏细粒度顺序在线更新。</td>
+                  <td>Update / Apply 可独立调度。</td>
+                </tr>
+                <tr>
+                  <td>多模态适配</td>
+                  <td>天然更适合一维序列。</td>
+                  <td>通过不同调度和 window attention 适配图像集合、语言和视频。</td>
+                </tr>
+              </tbody>
+            </table>
+          </section>
+
+          <section id="experiments" class="section">
+            <h2>实验验证了什么</h2>
+            <p>
+              LaCT 的实验不是只证明“更快”，而是证明大块 TTT 可以在不同数据结构下都保持可用：图像集合的新视角合成、
+              一维文本语言模型，以及图像序列上的自回归视频扩散。
+            </p>
+            <table>
+              <thead>
+                <tr>
+                  <th>任务</th>
+                  <th>数据结构</th>
+                  <th>Chunk / 长度</th>
+                  <th>结论</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>Novel View Synthesis</td>
+                  <td>Image set</td>
+                  <td>最高约 1M tokens，128 张输入图像，560 x 536。</td>
+                  <td>在低延迟下接近 full attention，并在大规模输入下优于 3D Gaussian Splatting/LongLRM 设置。</td>
+                </tr>
+                <tr>
+                  <td>Language Modeling</td>
+                  <td>1D sequence</td>
+                  <td>2K/4K chunk，32K 序列评估。</td>
+                  <td>在长 token 位置上 loss 更低，needle retrieval 也强于 GLA 和 DeltaNet。</td>
+                </tr>
+                <tr>
+                  <td>Autoregressive Video Diffusion</td>
+                  <td>Image sequence</td>
+                  <td>14B 模型，最长约 56K visual tokens。</td>
+                  <td>在 validation loss 上接近 full attention，并优于 Mamba/SWA 等滑窗基线。</td>
+                </tr>
+              </tbody>
+            </table>
+
+            <h3>新视角合成</h3>
+            <figure>
+              <img src="./assets/lact-figure-4-nvs.png" alt="LaCT Figure 4 novel view synthesis results" />
+              <figcaption>
+                Figure 4：LaCT 在 NVS 上以更低 prefill latency 获得接近 full attention 的质量，并能扩展到 1M token 输入。
+              </figcaption>
+            </figure>
+
+            <h3>语言模型</h3>
+            <figure>
+              <img src="./assets/lact-figure-5-language.png" alt="LaCT Figure 5 language model validation loss and needle retrieval" />
+              <figcaption>
+                Figure 5：LaCT 在 760M 和 3B 规模语言模型上改善长上下文位置的 loss，并在 needle retrieval 上表现更强。
+              </figcaption>
+            </figure>
+
+            <h3>自回归视频扩散</h3>
+            <figure>
+              <img src="./assets/lact-figure-6-video.png" alt="LaCT Figure 6 autoregressive video diffusion results" />
+              <figcaption>
+                Figure 6：LaCT 适配 14B 视频扩散模型，在更长视频评估中维持较低 loss。
+              </figcaption>
+            </figure>
+          </section>
+
+          <section id="limits" class="section">
+            <h2>局限与边界</h2>
+            <p>
+              论文也明确提到几个限制。第一，SwiGLU/linear fast weight 不具备 softmax attention 那样由相对位置编码带来的旋转不变性；
+              这对空间和视觉任务可能重要。第二，虽然实验覆盖三类任务，但仍不足以证明它对所有多模态结构都最优。
+              第三，视频扩散的可扩展性评价本身缺少像语言 perplexity 那样稳定、可区分的指标。
+            </p>
+            <div class="callout">
+              <strong>我的理解</strong>
+              <p>
+                LaCT 最值得记住的不是“chunk 变大所以快”，而是大 chunk 让更大记忆、更复杂更新、多 GPU 并行和多模态读写调度同时成立。
+              </p>
+            </div>
+          </section>
+
+          <section id="takeaways" class="section">
+            <h2>汇报时可以这样讲</h2>
+            <p>
+              传统 TTT 的核心想法是把快速权重当作记忆，但小批量频繁更新导致 GPU 利用率低、非线性记忆难扩展，也难以自然表达多维数据依赖。
+              LaCT 通过超大块聚合更新重写 TTT 的计算组织方式，并结合 SwiGLU-MLP、Muon、window attention 和上下文并行，
+              把 TTT 从小步在线序列记忆机制扩展成可处理长上下文和多模态数据的混合架构。
+            </p>
+            <div class="pill-row" aria-label="LaCT key phrases">
+              <span>大块更新</span>
+              <span>快速权重记忆</span>
+              <span>Update/Apply 解耦</span>
+              <span>非线性 state scaling</span>
+              <span>局部注意力 + 非局部记忆</span>
+              <span>上下文并行</span>
+            </div>
+          </section>
+        </article>
+      </div>
+    </main>
+  </body>
+</html>
